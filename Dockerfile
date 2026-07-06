@@ -8,9 +8,8 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libzip-dev \
     libicu-dev \
-    && docker-php-ext-install pdo pdo_mysql mysqli intl zip
-
-RUN pecl install mongodb \
+    && docker-php-ext-install pdo pdo_mysql mysqli intl zip \
+    && pecl install mongodb \
     && echo "extension=mongodb.so" > /usr/local/etc/php/conf.d/mongodb.ini
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
