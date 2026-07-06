@@ -1,0 +1,18 @@
+# Cache and logs
+/var/
+/vendor/
+/public/bundles/
+/public/build/
+/node_modules/
+
+# Symfony
+/.env.local
+/.env.local.php
+/.env.*.local
+
+# IDE
+/.idea/
+/.vscode/
+
+# Misc
+.DS_Store
