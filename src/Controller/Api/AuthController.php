@@ -5,11 +5,14 @@ namespace App\Controller\Api;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
+
 
 #[Route('/api', name: 'api_')]
 class AuthController extends AbstractController
@@ -82,6 +85,7 @@ class AuthController extends AbstractController
     return $this->json($response, $status);
   }
 
+
   // Pour vérifier si l'email est unique
   #[Route('/check-email', name: 'check_email', methods: ['GET'])]
   public function checkEmail(Request $request, UserRepository $repo): JsonResponse
@@ -93,6 +97,7 @@ class AuthController extends AbstractController
     return $this->json(['unique' => !$exists]);
   }
 
+
   // Pour vérifier si le pseudo est unique
   #[Route('/check-pseudo', name: 'check_pseudo', methods: ['GET'])]
   public function checkPseudo(Request $request, UserRepository $repo): JsonResponse
@@ -102,5 +107,75 @@ class AuthController extends AbstractController
     $exists = $repo->findOneBy(['pseudo' => $pseudo]) !== null;
   
     return $this->json(['unique' => !$exists]);
+  }
+
+
+  // Pour se connecter
+  #[Route('/auth/sign-in', name: 'auth_sign_in', methods: ['POST'])]
+  public function signIn(
+      Request $request,
+      UserRepository $userRepository,
+      UserPasswordHasherInterface $passwordHasher,
+      JWTTokenManagerInterface $jwtManager,
+      RateLimiterFactory $loginLimiter
+  ): JsonResponse {
+  
+      $limiter = $loginLimiter->create($request->getClientIp());
+      $limit = $limiter->consume(1);
+  
+      if (!$limit->isAccepted()) {
+          return $this->json([
+              'status' => 429,
+              'data' => [
+                  'success' => false,
+                  'message' => 'Trop de tentatives de connexion. Réessayez dans quelques instants.'
+              ]
+          ], 429);
+      }
+  
+      $data = json_decode($request->getContent(), true);
+  
+      $email = $data['email'] ?? null;
+      $password = $data['password'] ?? null;
+  
+      if (!$email || !$password) {
+          return $this->json([
+              'status' => 400,
+              'data' => [
+                  'success' => false,
+                  'message' => 'Email et mot de passe sont obligatoires.'
+              ]
+          ], 400);
+      }
+  
+      $user = $userRepository->findOneBy(['email' => $email]);
+  
+      if (!$user || !$passwordHasher->isPasswordValid($user, $password)) {
+          return $this->json([
+              'status' => 401,
+              'data' => [
+                  'success' => false,
+                  'message' => 'Identifiants incorrects.'
+              ]
+          ], 401);
+      }
+  
+      $temporaryPassword = false;
+
+      $token = $jwtManager->create($user);
+  
+      return $this->json([
+          'status' => 200,
+          'data' => [
+              'success' => true,
+              'token' => $token,
+              'user' => [
+                  'id' => $user->getId(),
+                  'email' => $user->getEmail(),
+                  'pseudo' => $user->getPseudo(),
+                  'temporaryPassword' => $temporaryPassword
+              ]
+          ]
+      ], 200);
   }
 }

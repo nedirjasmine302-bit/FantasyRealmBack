@@ -6,16 +6,24 @@ security:
 
     # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
     providers:
-        users_in_memory: { memory: null }
+        app_user_provider:
+            entity:
+                class: App\Entity\User
+                property: email
 
     firewalls:
         dev:
             # Ensure dev tools and static assets are always allowed
             pattern: ^/(_profiler|_wdt|assets|build)/
             security: false
-        main:
-            lazy: true
-            provider: users_in_memory
+        # main:
+            # lazy: true
+            # provider: users_in_memory
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: app_user_provider
+            jwt: ~
 
             # Activate different ways to authenticate:
             # https://symfony.com/doc/current/security.html#the-firewall
@@ -27,6 +35,15 @@ security:
     access_control:
         # - { path: ^/admin, roles: ROLE_ADMIN }
         # - { path: ^/profile, roles: ROLE_USER }
+        # Sign-in accessible sans être connecté
+        - { path: ^/api/auth/sign-in, roles: PUBLIC_ACCESS }
+        # Sign-up accessible sans être connecté
+        - { path: ^/api/sign-up, roles: PUBLIC_ACCESS }
+        # Vérification d'unicité email/pseudo accessible sans être connecté (utilisée pendant l'inscription)
+        - { path: ^/api/check-email, roles: PUBLIC_ACCESS }
+        - { path: ^/api/check-pseudo, roles: PUBLIC_ACCESS }
+        # Le reste des /api nécessite un JWT valide
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
 when@test:
     security:

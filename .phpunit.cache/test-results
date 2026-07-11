@@ -1,1 +1,1 @@
-{"version":2,"defects":{"App\\Tests\\Controller\\AuthControllerTest::testSignUpSuccess":7},"times":{"App\\Tests\\Controller\\AuthControllerTest::testSignUpSuccess":0.509}}
+{"version":2,"defects":{"App\\Tests\\Controller\\AuthControllerTest::testSignUpSuccess":7},"times":{"App\\Tests\\Controller\\AuthControllerTest::testSignUpSuccess":2.243}}
