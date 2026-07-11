@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/FantasyRealmBDD?serverVersion=8.0"
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/FantasyRealmBDD_test?serverVersion=8.0"
 
     services:
       mysql:
