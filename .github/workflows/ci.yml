@@ -43,6 +43,9 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist
 
+      - name: Generate JWT keys
+        run: php bin/console lexik:jwt:generate-keypair --skip-if-exists
+
       - name: Prepare test database
         run: |
           php bin/console doctrine:database:create --env=test --if-not-exists
