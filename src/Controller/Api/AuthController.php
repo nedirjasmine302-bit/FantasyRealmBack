@@ -10,14 +10,16 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\PasswordHasher\Hasher\PasswordHasherFactoryInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
-
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
 
 #[Route('/api', name: 'api_')]
 class AuthController extends AbstractController
 {
-  //Pour s'inscrire
+  // Pour s'inscrire
   #[Route('/sign-up', name: 'sign_up', methods: ['POST'])]
   public function signUp(
     Request $request,
@@ -25,7 +27,6 @@ class AuthController extends AbstractController
     UserRepository $userRepository,
     UserPasswordHasherInterface $passwordHasher
   ): JsonResponse {
-
     $data = json_decode($request->getContent(), true);
 
     $email = $data['email'] ?? null;
@@ -91,21 +92,18 @@ class AuthController extends AbstractController
   public function checkEmail(Request $request, UserRepository $repo): JsonResponse
   {
     $email = $request->query->get('email');
-    
     $exists = $repo->findOneBy(['email' => $email]) !== null;
-    
+
     return $this->json(['unique' => !$exists]);
   }
-
 
   // Pour vérifier si le pseudo est unique
   #[Route('/check-pseudo', name: 'check_pseudo', methods: ['GET'])]
   public function checkPseudo(Request $request, UserRepository $repo): JsonResponse
   {
     $pseudo = $request->query->get('pseudo');
-  
     $exists = $repo->findOneBy(['pseudo' => $pseudo]) !== null;
-  
+
     return $this->json(['unique' => !$exists]);
   }
 
@@ -113,69 +111,230 @@ class AuthController extends AbstractController
   // Pour se connecter
   #[Route('/auth/sign-in', name: 'auth_sign_in', methods: ['POST'])]
   public function signIn(
-      Request $request,
-      UserRepository $userRepository,
-      UserPasswordHasherInterface $passwordHasher,
-      JWTTokenManagerInterface $jwtManager,
-      RateLimiterFactory $loginLimiter
+    Request $request,
+    UserRepository $userRepository,
+    UserPasswordHasherInterface $passwordHasher,
+    PasswordHasherFactoryInterface $passwordHasherFactory,
+    EntityManagerInterface $em,
+    JWTTokenManagerInterface $jwtManager,
+    RateLimiterFactory $loginLimiter
   ): JsonResponse {
-  
-      $limiter = $loginLimiter->create($request->getClientIp());
-      $limit = $limiter->consume(1);
-  
-      if (!$limit->isAccepted()) {
-          return $this->json([
-              'status' => 429,
-              'data' => [
-                  'success' => false,
-                  'message' => 'Trop de tentatives de connexion. Réessayez dans quelques instants.'
-              ]
-          ], 429);
-      }
-  
-      $data = json_decode($request->getContent(), true);
-  
-      $email = $data['email'] ?? null;
-      $password = $data['password'] ?? null;
-  
-      if (!$email || !$password) {
-          return $this->json([
-              'status' => 400,
-              'data' => [
-                  'success' => false,
-                  'message' => 'Email et mot de passe sont obligatoires.'
-              ]
-          ], 400);
-      }
-  
-      $user = $userRepository->findOneBy(['email' => $email]);
-  
-      if (!$user || !$passwordHasher->isPasswordValid($user, $password)) {
-          return $this->json([
-              'status' => 401,
-              'data' => [
-                  'success' => false,
-                  'message' => 'Identifiants incorrects.'
-              ]
-          ], 401);
-      }
-  
-      $temporaryPassword = false;
+    $limiter = $loginLimiter->create($request->getClientIp());
+    $limit = $limiter->consume(1);
 
-      $token = $jwtManager->create($user);
-  
+    if (!$limit->isAccepted()) {
       return $this->json([
-          'status' => 200,
+        'status' => 429,
+        'data' => [
+          'success' => false,
+          'message' => 'Trop de tentatives de connexion. Réessayez dans quelques instants.'
+        ]
+      ], 429);
+    }
+
+    $data = json_decode($request->getContent(), true);
+
+    $email = $data['email'] ?? null;
+    $password = $data['password'] ?? null;
+
+    if (!$email || !$password) {
+      return $this->json([
+        'status' => 400,
+        'data' => [
+          'success' => false,
+          'message' => 'Email et mot de passe sont obligatoires.'
+        ]
+      ], 400);
+    }
+
+    $user = $userRepository->findOneBy(['email' => $email]);
+
+    if (!$user) {
+      return $this->json([
+        'status' => 401,
+        'data' => [
+          'success' => false,
+          'message' => 'Identifiants incorrects.'
+        ]
+      ], 401);
+    }
+
+    $temporaryPassword = false;
+
+    if ($passwordHasher->isPasswordValid($user, $password)) {
+      if ($user->getTemporaryPassword() !== null) {
+        $user->setTemporaryPassword(null);
+        $user->setTemporaryPasswordExpiresAt(null);
+        $em->flush();
+      }
+    } else {
+      $tempHash = $user->getTemporaryPassword();
+      $expiresAt = $user->getTemporaryPasswordExpiresAt();
+
+      $tempValid =
+        $tempHash !== null &&
+        $expiresAt !== null &&
+        $expiresAt > new \DateTimeImmutable() &&
+        $passwordHasherFactory->getPasswordHasher($user)->verify($tempHash, $password);
+
+      if (!$tempValid) {
+        return $this->json([
+          'status' => 401,
           'data' => [
-              'success' => true,
-              'token' => $token,
-              'user' => [
-                  'id' => $user->getId(),
-                  'email' => $user->getEmail(),
-                  'pseudo' => $user->getPseudo(),
-                  'temporaryPassword' => $temporaryPassword
-              ]
+            'success' => false,
+            'message' => 'Identifiants incorrects.'
           ]
-      ], 200);
+        ], 401);
+      }
+
+      $temporaryPassword = true;
+    }
+
+    $token = $jwtManager->create($user);
+
+    return $this->json([
+      'status' => 200,
+      'data' => [
+        'success' => true,
+        'token' => $token,
+        'user' => [
+          'id' => $user->getId(),
+          'email' => $user->getEmail(),
+          'pseudo' => $user->getPseudo(),
+          'temporaryPassword' => $temporaryPassword
+        ]
+      ]
+    ], 200);
+  }
+
+
+  // Pour vérifier si l'email existe
+  #[Route('/users/check-email', name: 'users_check_email', methods: ['GET'])]
+  public function usersCheckEmail(Request $request, UserRepository $userRepository): JsonResponse
+  {
+    $email = $request->query->get('value');
+
+    if (!$email) {
+      return $this->json([
+        'exists' => false,
+        'message' => 'Paramètre "value" (email) manquant.'
+      ], 400);
+    }
+
+    $exists = $userRepository->existsByEmail($email);
+
+    return $this->json([
+      'exists' => $exists
+    ], 200);
+  }
+
+
+  // Pour vérifier si email et pseudo correspondent
+  #[Route('/users/check-identity', name: 'users_check_identity', methods: ['GET'])]
+  public function usersCheckIdentity(Request $request, UserRepository $userRepository): JsonResponse
+  {
+    $email = $request->query->get('email');
+    $pseudo = $request->query->get('pseudo');
+
+    if (!$email || !$pseudo) {
+      return $this->json([
+        'match' => false,
+        'message' => 'Paramètres "email" et "pseudo" sont obligatoires.'
+      ], 400);
+    }
+
+    $match = $userRepository->matchEmailAndPseudo($email, $pseudo);
+
+    return $this->json([
+      'match' => $match
+    ], 200);
+  }
+
+
+  // Pour envoyer un mot de passe temporaire par email
+  #[Route('/auth/forgot-password', name: 'auth_forgot_password', methods: ['POST'])]
+  public function forgotPassword(
+    Request $request,
+    UserRepository $userRepository,
+    UserPasswordHasherInterface $passwordHasher,
+    EntityManagerInterface $em,
+    MailerInterface $mailer,
+    RateLimiterFactory $loginLimiter
+  ): JsonResponse {
+    $limiter = $loginLimiter->create($request->getClientIp());
+    $limit = $limiter->consume(1);
+    
+    if (!$limit->isAccepted()) {
+        return $this->json([
+            'status' => 429,
+            'data' => [
+                'success' => false,
+                'message' => 'Trop de tentatives. Réessayez dans quelques instants.'
+            ]
+        ], 429);
+    }
+
+    $data = json_decode($request->getContent(), true);
+
+    $email = $data['email'] ?? null;
+    $pseudo = $data['pseudo'] ?? null;
+
+    if (!$email || !$pseudo) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Email et pseudo sont obligatoires.'
+      ], 400);
+    }
+
+    $user = $userRepository->findOneBy([
+      'email' => $email,
+      'pseudo' => $pseudo
+    ]);
+
+    if (!$user) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Cet email et ce pseudo ne correspondent à aucun compte.'
+      ], 404);
+    }
+
+    $temporaryPasswordPlain = $this->generateTemporaryPassword(10);
+    $temporaryPasswordHashed = $passwordHasher->hashPassword($user, $temporaryPasswordPlain);
+    $expiresAt = (new \DateTimeImmutable())->modify('+15 minutes');
+
+    $user->setTemporaryPassword($temporaryPasswordHashed);
+    $user->setTemporaryPasswordExpiresAt($expiresAt);
+
+    $em->persist($user);
+    $em->flush();
+
+    $emailMessage = (new Email())
+      ->from('no-reply@fantasyrealm-online.com')
+      ->to($user->getEmail())
+      ->subject('Votre mot de passe temporaire')
+      ->text(sprintf(
+        "Bonjour %s,\n\nVoici votre mot de passe temporaire : %s\nIl expirera dans 15 minutes.\n\nÀ bientôt sur FantasyRealm Online !",
+        $user->getPseudo(),
+        $temporaryPasswordPlain
+      ));
+
+    $mailer->send($emailMessage);
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Temporary password sent.'
+    ], 200);
+  }
+
+  private function generateTemporaryPassword(int $length = 10): string
+  {
+    $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    $password = '';
+
+    for ($i = 0; $i < $length; $i++) {
+      $password .= $chars[random_int(0, strlen($chars) - 1)];
+    }
+
+    return $password;
   }
 }

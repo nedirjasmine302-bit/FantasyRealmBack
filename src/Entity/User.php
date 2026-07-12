@@ -27,6 +27,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
   #[ORM\Column]
   private ?\DateTimeImmutable $createdAt = null;
 
+  // 🔹 Mot de passe temporaire (hashé)
+  #[ORM\Column(length: 255, nullable: true)]
+  private ?string $temporaryPassword = null;
+
+  // 🔹 Date d'expiration du mot de passe temporaire
+  #[ORM\Column(nullable: true)]
+  private ?\DateTimeImmutable $temporaryPasswordExpiresAt = null;
+
   public function __construct()
   {
     $this->createdAt = new \DateTimeImmutable();
@@ -78,6 +86,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
   public function setCreatedAt(\DateTimeImmutable $createdAt): static
   {
     $this->createdAt = $createdAt;
+    return $this;
+  }
+
+  public function getTemporaryPassword(): ?string
+  {
+    return $this->temporaryPassword;
+  }
+
+  public function setTemporaryPassword(?string $temporaryPassword): static
+  {
+    $this->temporaryPassword = $temporaryPassword;
+    return $this;
+  }
+
+  public function getTemporaryPasswordExpiresAt(): ?\DateTimeImmutable
+  {
+    return $this->temporaryPasswordExpiresAt;
+  }
+
+  public function setTemporaryPasswordExpiresAt(?\DateTimeImmutable $temporaryPasswordExpiresAt): static
+  {
+    $this->temporaryPasswordExpiresAt = $temporaryPasswordExpiresAt;
     return $this;
   }
 
