@@ -195,7 +195,7 @@ class AuthControllerTest extends WebTestCase
   }
 
 
-  // Vérification unicité email/pseudo
+  // Pour tester l'unicité email/pseudo
   public function testCheckEmailUniqueFalse(): void
   {
     $this->createUser();
@@ -237,7 +237,7 @@ class AuthControllerTest extends WebTestCase
   }
 
 
-  // Vérifier email + pseudo
+  // Pour tester l'existence d'un email et si email et pseudo correspondent
   public function testUsersCheckEmailExists(): void
   {
     $this->createUser();
@@ -299,7 +299,7 @@ class AuthControllerTest extends WebTestCase
   }
 
 
-  // Forgot password
+  // Pour tester l'envoi d'un mot de passe temporaire par email
   public function testForgotPasswordSuccess(): void
   {
     $this->createUser();
@@ -341,5 +341,114 @@ class AuthControllerTest extends WebTestCase
 
     $this->assertEquals(400, $response->getStatusCode());
     $this->assertEquals('Email et pseudo sont obligatoires.', $data['message']);
+  }
+
+
+  // Pour tester le changement du mot de passe via le mot de passe temporaire
+  public function testVerifyTempPasswordMissingFields(): void
+  {
+      $response = $this->post('/api/auth/verify-temp-password', [
+          'email' => '',
+          'temporaryPassword' => ''
+      ]);
+  
+      $data = json_decode($response->getContent(), true);
+  
+      $this->assertEquals(400, $response->getStatusCode());
+      $this->assertEquals('Email et mot de passe temporaire sont obligatoires.', $data['message']);
+  }
+  
+  public function testVerifyTempPasswordEmailNotFound(): void
+  {
+      $response = $this->post('/api/auth/verify-temp-password', [
+          'email' => 'unknown@mail.fr',
+          'temporaryPassword' => 'Temp123!'
+      ]);
+  
+      $data = json_decode($response->getContent(), true);
+  
+      $this->assertEquals(404, $response->getStatusCode());
+      $this->assertEquals('Aucun compte trouvé pour cet email.', $data['message']);
+  }
+  
+  public function testVerifyTempPasswordNoActiveTempPassword(): void
+  {
+      $this->createUser();
+  
+      $response = $this->post('/api/auth/verify-temp-password', [
+          'email' => 'existing@mail.fr',
+          'temporaryPassword' => 'Temp123!'
+      ]);
+  
+      $data = json_decode($response->getContent(), true);
+  
+      $this->assertEquals(400, $response->getStatusCode());
+      $this->assertEquals('Aucun mot de passe temporaire actif pour ce compte.', $data['message']);
+  }
+  
+  public function testVerifyTempPasswordExpired(): void
+  {
+      $this->createUser();
+  
+      $em = static::getContainer()->get('doctrine')->getManager();
+      $user = $em->getRepository(\App\Entity\User::class)->findOneBy(['email' => 'existing@mail.fr']);
+  
+      $user->setTemporaryPassword(password_hash('Temp123!', PASSWORD_DEFAULT));
+      $user->setTemporaryPasswordExpiresAt((new \DateTimeImmutable())->modify('-1 minute'));
+      $em->flush();
+  
+      $response = $this->post('/api/auth/verify-temp-password', [
+          'email' => 'existing@mail.fr',
+          'temporaryPassword' => 'Temp123!'
+      ]);
+  
+      $data = json_decode($response->getContent(), true);
+  
+      $this->assertEquals(400, $response->getStatusCode());
+      $this->assertEquals('Mot de passe temporaire expiré.', $data['message']);
+  }
+  
+  public function testVerifyTempPasswordIncorrect(): void
+  {
+      $this->createUser();
+  
+      $em = static::getContainer()->get('doctrine')->getManager();
+      $user = $em->getRepository(\App\Entity\User::class)->findOneBy(['email' => 'existing@mail.fr']);
+  
+      $user->setTemporaryPassword(password_hash('CorrectTemp!', PASSWORD_DEFAULT));
+      $user->setTemporaryPasswordExpiresAt((new \DateTimeImmutable())->modify('+10 minutes'));
+      $em->flush();
+  
+      $response = $this->post('/api/auth/verify-temp-password', [
+          'email' => 'existing@mail.fr',
+          'temporaryPassword' => 'WrongTemp!'
+      ]);
+  
+      $data = json_decode($response->getContent(), true);
+  
+      $this->assertEquals(401, $response->getStatusCode());
+      $this->assertEquals('Mot de passe temporaire incorrect.', $data['message']);
+  }
+  
+  public function testVerifyTempPasswordSuccess(): void
+  {
+      $this->createUser();
+  
+      $em = static::getContainer()->get('doctrine')->getManager();
+      $user = $em->getRepository(\App\Entity\User::class)->findOneBy(['email' => 'existing@mail.fr']);
+  
+      $user->setTemporaryPassword(password_hash('CorrectTemp!', PASSWORD_DEFAULT));
+      $user->setTemporaryPasswordExpiresAt((new \DateTimeImmutable())->modify('+10 minutes'));
+      $em->flush();
+  
+      $response = $this->post('/api/auth/verify-temp-password', [
+          'email' => 'existing@mail.fr',
+          'temporaryPassword' => 'CorrectTemp!'
+      ]);
+  
+      $data = json_decode($response->getContent(), true);
+  
+      $this->assertEquals(200, $response->getStatusCode());
+      $this->assertTrue($data['valid']);
   }
 }

@@ -337,4 +337,162 @@ class AuthController extends AbstractController
 
     return $password;
   }
+
+    // Pour vérifier si le mot de passe temporaire
+    #[Route('/auth/verify-temp-password', name: 'auth_verify_temp_password', methods: ['POST'])]
+    public function verifyTemporaryPassword(
+      Request $request,
+      UserRepository $userRepository,
+      PasswordHasherFactoryInterface $passwordHasherFactory
+      ): JsonResponse {
+      $data = json_decode($request->getContent(), true);
+  
+      $email = $data['email'] ?? null;
+      $temporaryPassword = $data['temporaryPassword'] ?? null;
+  
+      if (empty($email) || empty($temporaryPassword)) {
+          return $this->json([
+              'valid' => false,
+              'message' => 'Email et mot de passe temporaire sont obligatoires.'
+          ], 400);
+      }
+  
+      $user = $userRepository->findOneBy(['email' => $email]);
+  
+      if (!$user) {
+          return $this->json([
+              'valid' => false,
+              'message' => 'Aucun compte trouvé pour cet email.'
+          ], 404);
+      }
+  
+      if (!$user->getTemporaryPassword() || !$user->getTemporaryPasswordExpiresAt()) {
+          return $this->json([
+              'valid' => false,
+                        'message' => 'Aucun mot de passe temporaire actif pour ce compte.'
+          ], 400);
+      }
+  
+      $now = new \DateTimeImmutable();
+      if ($now > $user->getTemporaryPasswordExpiresAt()) {
+          return $this->json([
+              'valid' => false,
+              'message' => 'Mot de passe temporaire expiré.'
+          ], 400);
+      }
+  
+      $tempHash = $user->getTemporaryPassword();
+      $tempValid = $passwordHasherFactory->getPasswordHasher($user)->verify($tempHash, $temporaryPassword);
+  
+      if (!$tempValid) {
+          return $this->json([
+              'valid' => false,
+              'message' => 'Mot de passe temporaire incorrect.'
+          ], 401);
+      }
+  
+      return $this->json([
+          'valid' => true
+      ], 200);
+    }
+
+
+  // Pour vérifie si le mot de passe est sécurisé
+  private function isStrongPassword(string $password): bool
+  {
+    if (strlen($password) < 8) {
+      return false;
+    }
+
+    if (!preg_match('/[A-Z]/', $password)) {
+      return false;
+    }
+
+    if (!preg_match('/[a-z]/', $password)) {
+      return false;
+    }
+
+    if (!preg_match('/\d/', $password)) {
+      return false;
+    }
+
+    if (!preg_match('/[^A-Za-z0-9]/', $password)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // Pour changer le mot de passe via le mot de passe temporaire
+  #[Route('/auth/reset-password', name: 'auth_reset_password', methods: ['POST'])]
+  public function resetPassword(
+      Request $request,
+      UserRepository $userRepository,
+      UserPasswordHasherInterface $passwordHasher,
+      EntityManagerInterface $em
+  ): JsonResponse
+  {
+      $data = json_decode($request->getContent(), true);
+  
+      $email = $data['email'] ?? null;
+      $temporaryPassword = $data['temporaryPassword'] ?? null;
+      $newPassword = $data['newPassword'] ?? null;
+  
+      if (empty($email) || empty($temporaryPassword) || empty($newPassword)) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Email, mot de passe temporaire et nouveau mot de passe sont obligatoires.'
+          ], 400);
+      }
+  
+      if (!$this->isStrongPassword($newPassword)) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Mot de passe non conforme.'
+          ], 400);
+      }
+  
+      $user = $userRepository->findOneBy(['email' => $email]);
+  
+      if (!$user) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Aucun compte trouvé pour cet email.'
+          ], 404);
+      }
+  
+      if (!$user->getTemporaryPassword() || !$user->getTemporaryPasswordExpiresAt()) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Aucun mot de passe temporaire actif pour ce compte.'
+          ], 400);
+      }
+  
+      $now = new \DateTimeImmutable();
+      if ($now > $user->getTemporaryPasswordExpiresAt()) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Mot de passe temporaire expiré.'
+          ], 400);
+      }
+  
+      if (!password_verify($temporaryPassword, $user->getTemporaryPassword())) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Mot de passe temporaire incorrect.'
+          ], 401);
+      }
+  
+      $hashedNewPassword = $passwordHasher->hashPassword($user, $newPassword);
+      $user->setPassword($hashedNewPassword);
+  
+      $user->setTemporaryPassword(null);
+      $user->setTemporaryPasswordExpiresAt(null);
+  
+      $em->flush();
+  
+      return $this->json([
+          'success' => true
+      ], 200);
+  }
 }

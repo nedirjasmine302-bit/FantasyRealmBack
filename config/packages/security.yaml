@@ -53,6 +53,10 @@ security:
     - { path: ^/api/users/check-identity, roles: PUBLIC_ACCESS }
     - { path: ^/api/auth/forgot-password, roles: PUBLIC_ACCESS }
 
+    # Reset password avec mot de passe temporaire
+    - { path: ^/api/auth/verify-temp-password, roles: PUBLIC_ACCESS }
+    - { path: ^/api/auth/reset-password, roles: PUBLIC_ACCESS }
+
     # Le reste des /api nécessite un JWT valide
     - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
