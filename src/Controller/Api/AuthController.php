@@ -369,7 +369,7 @@ class AuthController extends AbstractController
       if (!$user->getTemporaryPassword() || !$user->getTemporaryPasswordExpiresAt()) {
           return $this->json([
               'valid' => false,
-                        'message' => 'Aucun mot de passe temporaire actif pour ce compte.'
+              'message' => 'Aucun mot de passe temporaire actif pour ce compte.'
           ], 400);
       }
   

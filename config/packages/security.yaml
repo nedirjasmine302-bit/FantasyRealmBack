@@ -4,6 +4,12 @@ security:
     App\Entity\User:
       algorithm: auto
 
+  # Hiérarchie des rôles : chaque niveau hérite des droits du niveau en dessous.
+  # ROLE_ADMIN peut tout faire, ROLE_EMPLOYER peut ce que peut un joueur, etc.
+  role_hierarchy:
+    ROLE_EMPLOYER: ROLE_USER
+    ROLE_ADMIN: ROLE_EMPLOYER
+
   # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
   providers:
     app_user_provider:
@@ -56,6 +62,9 @@ security:
     # Reset password avec mot de passe temporaire
     - { path: ^/api/auth/verify-temp-password, roles: PUBLIC_ACCESS }
     - { path: ^/api/auth/reset-password, roles: PUBLIC_ACCESS }
+
+    # Consultation des personnages en lecture seule : accessible aux visiteurs.
+    - { path: ^/api/characters, methods: [GET], roles: PUBLIC_ACCESS }
 
     # Le reste des /api nécessite un JWT valide
     - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
