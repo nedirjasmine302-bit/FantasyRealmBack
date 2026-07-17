@@ -3,6 +3,8 @@
 namespace App\Entity;
 
 use App\Repository\UserRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
@@ -36,9 +38,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
   #[ORM\Column(nullable: true)]
   private ?\DateTimeImmutable $temporaryPasswordExpiresAt = null;
 
+  /**
+   * @var Collection<int, Character>
+   */
+  #[ORM\ManyToMany(targetEntity: Character::class)]
+  #[ORM\JoinTable(name: 'favorites')]
+  private Collection $favorites;
+
   public function __construct()
   {
     $this->createdAt = new \DateTimeImmutable();
+    $this->favorites = new ArrayCollection();
   }
 
   public function getId(): ?int
@@ -109,6 +119,29 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
   public function setTemporaryPasswordExpiresAt(?\DateTimeImmutable $temporaryPasswordExpiresAt): static
   {
     $this->temporaryPasswordExpiresAt = $temporaryPasswordExpiresAt;
+    return $this;
+  }
+
+  /**
+   * @return Collection<int, Character>
+   */
+  public function getFavorites(): Collection
+  {
+    return $this->favorites;
+  }
+
+  public function addFavorite(Character $favorite): static
+  {
+    if (!$this->favorites->contains($favorite)) {
+      $this->favorites->add($favorite);
+    }
+
+    return $this;
+  }
+
+  public function removeFavorite(Character $favorite): static
+  {
+    $this->favorites->removeElement($favorite);
     return $this;
   }
 
