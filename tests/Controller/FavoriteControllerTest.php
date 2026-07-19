@@ -97,6 +97,7 @@ class FavoriteControllerTest extends WebTestCase
     $list = json_decode($this->request('GET', '/api/favorites', $token)->getContent(), true);
     $this->assertCount(1, $list['favorites']);
     $this->assertEquals('Aelyra', $list['favorites'][0]['name']);
+    $this->assertEquals('mage', $list['favorites'][0]['type']);
   }
 
   public function testAddFavoriteIsIdempotent(): void

@@ -30,8 +30,10 @@ class FavoriteController extends AbstractController
       fn (Character $c) => [
         'id' => $c->getId(),
         'name' => $c->getName(),
+        'type' => $c->getType(),
         'image' => $c->getImage(),
-        'creator' => $c->getCreator()?->getPseudo()
+        'creator' => $c->getCreator()?->getPseudo(),
+        'createdAt' => $c->getCreatedAt()?->format(\DateTimeInterface::ATOM)
       ],
       $user->getFavorites()->toArray()
     );
