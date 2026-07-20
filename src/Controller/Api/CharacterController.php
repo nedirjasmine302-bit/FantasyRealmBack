@@ -5,6 +5,7 @@ namespace App\Controller\Api;
 use App\Entity\Character;
 use App\Entity\User;
 use App\Repository\CharacterRepository;
+use App\Repository\CommentRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -70,7 +71,7 @@ class CharacterController extends AbstractController
     $character->setDescription($description);
     $character->setImage($image);
     $character->setAppearance(is_array($appearance) ? $appearance : []);
-    $character->setStatus('draft'); //à faire valider par un employé
+    $character->setStatus('draft');
     $character->setCreator($user);
 
     $em->persist($character);
@@ -152,6 +153,8 @@ class CharacterController extends AbstractController
 
     $data = json_decode($request->getContent(), true) ?? [];
 
+    $mustRevalidate = false;
+
     if (isset($data['name'])) {
       $name = trim($data['name']);
 
@@ -162,11 +165,21 @@ class CharacterController extends AbstractController
         ], 400);
       }
 
+      if ($name !== $character->getName()) {
+        $mustRevalidate = true;
+      }
+
       $character->setName($name);
     }
 
     if (isset($data['type'])) {
-      $character->setType(trim($data['type']));
+      $type = trim($data['type']);
+
+      if ($type !== $character->getType()) {
+        $mustRevalidate = true;
+      }
+
+      $character->setType($type);
     }
 
     if (isset($data['description'])) {
@@ -179,14 +192,26 @@ class CharacterController extends AbstractController
         ], 400);
       }
 
+      if ($description !== $character->getDescription()) {
+        $mustRevalidate = true;
+      }
+
       $character->setDescription($description);
     }
 
     if (isset($data['image'])) {
+      if ($data['image'] !== $character->getImage()) {
+        $mustRevalidate = true;
+      }
+
       $character->setImage($data['image']);
     }
 
     if (isset($data['appearance']) && is_array($data['appearance'])) {
+      if ($data['appearance'] != $character->getAppearance()) {
+        $mustRevalidate = true;
+      }
+
       $character->setAppearance($data['appearance']);
     }
 
@@ -202,6 +227,12 @@ class CharacterController extends AbstractController
       if (array_key_exists('relique', $data)) {
         $character->setRelique($data['relique']);
       }
+    }
+
+    if ($mustRevalidate) {
+      $character->setStatus('draft');
+      $character->setShared(false);
+      $this->purgeFavorites($em, $character->getId());
     }
 
     $em->flush();
@@ -243,6 +274,11 @@ class CharacterController extends AbstractController
     }
 
     $character->setStatus($status);
+
+    if ($status !== 'valid') {
+      $this->purgeFavorites($em, $character->getId());
+    }
+
     $em->flush();
 
     return $this->json([
@@ -251,6 +287,185 @@ class CharacterController extends AbstractController
       'character' => $this->serializeCharacter($character)
     ], 200);
   }
+
+  // Pour lister les personnages de l'utilisateur connecté
+  #[Route('/my-characters', name: 'characters_mine', methods: ['GET'])]
+  public function mine(CharacterRepository $repo): JsonResponse
+  {
+    $user = $this->getUser();
+
+    if (!$user instanceof User) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Utilisateur non authentifié.'
+      ], 401);
+    }
+
+    $characters = $repo->findBy(['creator' => $user], ['createdAt' => 'DESC']);
+
+    return $this->json([
+      'characters' => array_map(
+        fn (Character $c) => $this->serializeCharacter($c),
+        $characters
+      )
+    ], 200);
+  }
+
+
+  // Pour demander la validation de son personnage
+  #[Route('/characters/{id}/request-validation', name: 'characters_request_validation', methods: ['POST'], requirements: ['id' => '\d+'])]
+  public function requestValidation(int $id, CharacterRepository $repo, EntityManagerInterface $em): JsonResponse
+  {
+    $user = $this->getUser();
+    $character = $repo->find($id);
+
+    if (!$user instanceof User) {
+      return $this->json(['success' => false, 'message' => 'Utilisateur non authentifié.'], 401);
+    }
+
+    if (!$character) {
+      return $this->json(['success' => false, 'message' => 'Personnage introuvable.'], 404);
+    }
+
+    if ($character->getCreator()?->getId() !== $user->getId()) {
+      return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
+    }
+
+    if (!in_array($character->getStatus(), ['draft', 'refused'], true)) {
+      return $this->json(['success' => false, 'message' => 'Ce personnage ne peut pas être soumis à validation.'], 400);
+    }
+
+    $character->setStatus('pending');
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Votre personnage a été envoyé pour validation.',
+      'character' => $this->serializeCharacter($character)
+    ], 200);
+  }
+
+
+  // Pour partager ou arrêter le partage d'un personnage validé
+  #[Route('/characters/{id}/share', name: 'characters_share', methods: ['PATCH'], requirements: ['id' => '\d+'])]
+  public function share(int $id, Request $request, CharacterRepository $repo, EntityManagerInterface $em): JsonResponse
+  {
+    $user = $this->getUser();
+    $character = $repo->find($id);
+
+    if (!$user instanceof User) {
+      return $this->json(['success' => false, 'message' => 'Utilisateur non authentifié.'], 401);
+    }
+
+    if (!$character) {
+      return $this->json(['success' => false, 'message' => 'Personnage introuvable.'], 404);
+    }
+
+    if ($character->getCreator()?->getId() !== $user->getId()) {
+      return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
+    }
+
+    if ($character->getStatus() !== 'valid') {
+      return $this->json(['success' => false, 'message' => 'Seul un personnage validé peut être partagé.'], 400);
+    }
+
+    $data = json_decode($request->getContent(), true) ?? [];
+    $shared = array_key_exists('shared', $data) ? (bool) $data['shared'] : !$character->isShared();
+
+    $character->setShared($shared);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => $shared ? 'Personnage partagé.' : 'Partage arrêté.',
+      'shared' => $shared,
+      'character' => $this->serializeCharacter($character)
+    ], 200);
+  }
+
+
+  // Pour dupliquer son personnage
+  #[Route('/characters/{id}/duplicate', name: 'characters_duplicate', methods: ['POST'], requirements: ['id' => '\d+'])]
+  public function duplicate(int $id, CharacterRepository $repo, EntityManagerInterface $em): JsonResponse
+  {
+    $user = $this->getUser();
+    $character = $repo->find($id);
+
+    if (!$user instanceof User) {
+      return $this->json(['success' => false, 'message' => 'Utilisateur non authentifié.'], 401);
+    }
+
+    if (!$character) {
+      return $this->json(['success' => false, 'message' => 'Personnage introuvable.'], 404);
+    }
+
+    if ($character->getCreator()?->getId() !== $user->getId()) {
+      return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
+    }
+
+    $copy = new Character();
+    $copy->setName($character->getName());
+    $copy->setType($character->getType());
+    $copy->setDescription($character->getDescription());
+    $copy->setImage($character->getImage());
+    $copy->setAppearance($character->getAppearance());
+    $copy->setStatus('draft');
+    $copy->setShared(false);
+    $copy->setCreator($user);
+
+    $em->persist($copy);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Personnage dupliqué.',
+      'character' => $this->serializeCharacter($copy)
+    ], 201);
+  }
+
+
+  // Pour supprimer son personnage
+  #[Route('/characters/{id}', name: 'characters_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
+  public function delete(int $id, CharacterRepository $repo, CommentRepository $commentRepo, EntityManagerInterface $em): JsonResponse
+  {
+    $user = $this->getUser();
+    $character = $repo->find($id);
+
+    if (!$user instanceof User) {
+      return $this->json(['success' => false, 'message' => 'Utilisateur non authentifié.'], 401);
+    }
+
+    if (!$character) {
+      return $this->json(['success' => false, 'message' => 'Personnage introuvable.'], 404);
+    }
+
+    if ($character->getCreator()?->getId() !== $user->getId()) {
+      return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
+    }
+
+    foreach ($commentRepo->findBy(['character' => $character]) as $comment) {
+      $em->remove($comment);
+    }
+
+    $em->remove($character);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Personnage supprimé.'
+    ], 200);
+  }
+
+
+  // Retire un personnage des favoris de tous les utilisateurs
+  private function purgeFavorites(EntityManagerInterface $em, int $characterId): void
+  {
+    $em->getConnection()->executeStatement(
+      'DELETE FROM favorites WHERE character_id = :id',
+      ['id' => $characterId]
+    );
+  }
+
 
   // Pour transformer un Character en tableau JSON
   private function serializeCharacter(Character $c): array
@@ -263,6 +478,7 @@ class CharacterController extends AbstractController
       'image' => $c->getImage(),
       'appearance' => $c->getAppearance(),
       'status' => $c->getStatus(),
+      'shared' => $c->isShared(),
       'armor' => $c->getArmor(),
       'weapon' => $c->getWeapon(),
       'relique' => $c->getRelique(),

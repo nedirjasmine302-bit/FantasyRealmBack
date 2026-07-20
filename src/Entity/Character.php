@@ -7,7 +7,6 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: CharacterRepository::class)]
-// "character" est un mot réservé SQL -> on nomme la table "characters"
 #[ORM\Table(name: 'characters')]
 class Character
 {
@@ -33,6 +32,9 @@ class Character
 
   #[ORM\Column(length: 20)]
   private string $status = 'draft';
+
+  #[ORM\Column(options: ['default' => false])]
+  private bool $shared = false;
 
   #[ORM\Column(length: 100, nullable: true)]
   private ?string $armor = null;
@@ -123,6 +125,17 @@ class Character
   public function setStatus(string $status): static
   {
     $this->status = $status;
+    return $this;
+  }
+
+  public function isShared(): bool
+  {
+    return $this->shared;
+  }
+
+  public function setShared(bool $shared): static
+  {
+    $this->shared = $shared;
     return $this;
   }
 

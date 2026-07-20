@@ -3,6 +3,7 @@
 namespace App\Tests\Controller;
 
 use App\Entity\Character;
+use App\Entity\Comment;
 use App\Entity\User;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -19,6 +20,8 @@ class CharacterControllerTest extends WebTestCase
     $entityManager = static::getContainer()->get('doctrine')->getManager();
     $connection = $entityManager->getConnection();
     $connection->executeStatement('SET FOREIGN_KEY_CHECKS=0;');
+    $connection->executeStatement('TRUNCATE TABLE comment;');
+    $connection->executeStatement('TRUNCATE TABLE favorites;');
     $connection->executeStatement('TRUNCATE TABLE characters;');
     $connection->executeStatement('TRUNCATE TABLE user;');
     $connection->executeStatement('SET FOREIGN_KEY_CHECKS=1;');
@@ -48,9 +51,14 @@ class CharacterControllerTest extends WebTestCase
     return $this->client->getResponse();
   }
 
-  private function get(string $url)
+  private function get(string $url, ?string $token = null)
   {
-    $this->client->request('GET', $url);
+    $headers = [];
+    if ($token) {
+      $headers['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+    }
+
+    $this->client->request('GET', $url, [], [], $headers);
 
     return $this->client->getResponse();
   }
@@ -315,5 +323,286 @@ class CharacterControllerTest extends WebTestCase
     ], $token);
 
     $this->assertEquals(400, $response->getStatusCode());
+  }
+
+
+  private function delete(string $url, ?string $token = null)
+  {
+    $headers = ['CONTENT_TYPE' => 'application/json'];
+    if ($token) {
+      $headers['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+    }
+
+    $this->client->request('DELETE', $url, [], [], $headers);
+
+    return $this->client->getResponse();
+  }
+
+  private function createComment(User $author, Character $character): Comment
+  {
+    $entityManager = static::getContainer()->get('doctrine')->getManager();
+
+    $comment = new Comment();
+    $comment->setMessage('Un commentaire assez long pour être valide et lisible.');
+    $comment->setRating(4);
+    $comment->setStatus('valid');
+    $comment->setAuthor($author);
+    $comment->setCharacter($character);
+
+    $entityManager->persist($comment);
+    $entityManager->flush();
+
+    return $comment;
+  }
+
+
+  // Pour tester la récupération de ses propres personnages
+  public function testMyCharactersReturnsOnlyMine(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $this->createCharacter($owner);
+
+    $other = $this->createUser('other@mail.fr', 'Other');
+    $this->createCharacter($other);
+
+    $token = $this->tokenFor($owner);
+    $response = $this->get('/api/my-characters', $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertCount(1, $data['characters']);
+    $this->assertEquals('Owner', $data['characters'][0]['creator']);
+  }
+
+  public function testMyCharactersRequiresAuth(): void
+  {
+    $response = $this->get('/api/my-characters');
+
+    $this->assertEquals(401, $response->getStatusCode());
+  }
+
+
+  // Pour tester la demande de validation
+  public function testRequestValidationByOwner(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'draft');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->post('/api/characters/' . $character->getId() . '/request-validation', [], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals('pending', $data['character']['status']);
+  }
+
+  public function testRequestValidationNotOwner(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner);
+
+    $intruder = $this->createUser('intruder@mail.fr', 'Intruder');
+    $token = $this->tokenFor($intruder);
+
+    $response = $this->post('/api/characters/' . $character->getId() . '/request-validation', [], $token);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testRequestValidationRejectedWhenValid(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'valid');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->post('/api/characters/' . $character->getId() . '/request-validation', [], $token);
+
+    $this->assertEquals(400, $response->getStatusCode());
+  }
+
+
+  // Pour tester le partage
+  public function testShareRequiresValid(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'draft');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->patch('/api/characters/' . $character->getId() . '/share', ['shared' => true], $token);
+
+    $this->assertEquals(400, $response->getStatusCode());
+  }
+
+  public function testShareValidCharacter(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'valid');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->patch('/api/characters/' . $character->getId() . '/share', ['shared' => true], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['shared']);
+    $this->assertTrue($data['character']['shared']);
+
+    $response = $this->patch('/api/characters/' . $character->getId() . '/share', ['shared' => false], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertFalse($data['shared']);
+  }
+
+
+  // Pour tester la duplication
+  public function testDuplicateCreatesDraftCopy(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'valid');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->post('/api/characters/' . $character->getId() . '/duplicate', [], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(201, $response->getStatusCode());
+    $this->assertEquals('draft', $data['character']['status']);
+    $this->assertEquals('Aelyra', $data['character']['name']);
+    $this->assertNotEquals($character->getId(), $data['character']['id']);
+  }
+
+
+  // Pour tester la suppression
+  public function testDeleteByOwner(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner);
+    $token = $this->tokenFor($owner);
+    $id = $character->getId();
+
+    $response = $this->delete('/api/characters/' . $id, $token);
+    $this->assertEquals(200, $response->getStatusCode());
+
+    $this->assertEquals(404, $this->get('/api/characters/' . $id)->getStatusCode());
+  }
+
+  public function testDeleteNotOwner(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner);
+
+    $intruder = $this->createUser('intruder@mail.fr', 'Intruder');
+    $token = $this->tokenFor($intruder);
+
+    $response = $this->delete('/api/characters/' . $character->getId(), $token);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testDeleteAlsoRemovesComments(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner);
+    $this->createComment($owner, $character);
+    $token = $this->tokenFor($owner);
+
+    $response = $this->delete('/api/characters/' . $character->getId(), $token);
+
+    $this->assertEquals(200, $response->getStatusCode());
+  }
+
+
+  // Pour tester que toute modification repasse le personnage en brouillon
+  public function testUpdateResetsToDraft(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'valid');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->patch('/api/characters/' . $character->getId(), [
+      'description' => 'Une toute nouvelle description bien assez longue pour valider.'
+    ], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals('draft', $data['character']['status']);
+    $this->assertFalse($data['character']['shared']);
+  }
+
+  public function testAccessoryChangeDoesNotResetToDraft(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'valid');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->patch('/api/characters/' . $character->getId(), [
+      'armor' => 'runic-armor'
+    ], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals('valid', $data['character']['status']);
+    $this->assertEquals('runic-armor', $data['character']['armor']);
+  }
+
+  public function testResendingSameCoreValuesDoesNotReset(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'valid');
+    $token = $this->tokenFor($owner);
+
+    // Cas réel : la page de modification renvoie tous les champs coeur inchangés + un accessoire
+    $response = $this->patch('/api/characters/' . $character->getId(), [
+      'name' => 'Aelyra',
+      'description' => 'Une puissante magicienne des glaces venue du grand nord.',
+      'armor' => 'runic-armor'
+    ], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals('valid', $data['character']['status']);
+  }
+
+
+  // Pour tester le retrait automatique des favoris quand un perso quitte le statut validé
+  private function countFavorites(int $characterId): int
+  {
+    $em = static::getContainer()->get('doctrine')->getManager();
+
+    return (int) $em->getConnection()->executeQuery(
+      'SELECT COUNT(*) FROM favorites WHERE character_id = :id',
+      ['id' => $characterId]
+    )->fetchOne();
+  }
+
+  public function testCoreModificationRemovesFromAllFavorites(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'valid');
+
+    $fan = $this->createUser('fan@mail.fr', 'Fan');
+    $this->post('/api/characters/' . $character->getId() . '/favorite', [], $this->tokenFor($fan));
+    $this->assertEquals(1, $this->countFavorites($character->getId()));
+
+    $this->patch('/api/characters/' . $character->getId(), [
+      'description' => 'Une toute nouvelle description bien assez longue pour valider.'
+    ], $this->tokenFor($owner));
+
+    $this->assertEquals(0, $this->countFavorites($character->getId()));
+  }
+
+  public function testEmployerRefusalRemovesFromAllFavorites(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'valid');
+
+    $fan = $this->createUser('fan@mail.fr', 'Fan');
+    $this->post('/api/characters/' . $character->getId() . '/favorite', [], $this->tokenFor($fan));
+    $this->assertEquals(1, $this->countFavorites($character->getId()));
+
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $this->patch('/api/characters/' . $character->getId() . '/status', [
+      'status' => 'refused'
+    ], $this->tokenFor($employer));
+
+    $this->assertEquals(0, $this->countFavorites($character->getId()));
   }
 }
