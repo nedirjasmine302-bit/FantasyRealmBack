@@ -45,23 +45,26 @@ security:
     # - { path: ^/profile, roles: ROLE_USER }
 
     # Sign-in accessible sans être connecté
-    - { path: ^/api/auth/sign-in, roles: PUBLIC_ACCESS }
+    - { path: ^/api/auth/sign-in, methods: [POST], roles: PUBLIC_ACCESS }
 
     # Sign-up accessible sans être connecté
-    - { path: ^/api/sign-up, roles: PUBLIC_ACCESS }
+    - { path: ^/api/sign-up, methods: [POST], roles: PUBLIC_ACCESS }
 
     # Vérification d'unicité email/pseudo accessible sans être connecté
-    - { path: ^/api/check-email, roles: PUBLIC_ACCESS }
-    - { path: ^/api/check-pseudo, roles: PUBLIC_ACCESS }
+    - { path: ^/api/check-email, methods: [GET], roles: PUBLIC_ACCESS }
+    - { path: ^/api/check-pseudo, methods: [GET], roles: PUBLIC_ACCESS }
 
     # Forgot password & vérifications accessibles sans être connecté
-    - { path: ^/api/users/check-email, roles: PUBLIC_ACCESS }
-    - { path: ^/api/users/check-identity, roles: PUBLIC_ACCESS }
-    - { path: ^/api/auth/forgot-password, roles: PUBLIC_ACCESS }
+    - { path: ^/api/users/check-email, methods: [GET], roles: PUBLIC_ACCESS }
+    - { path: ^/api/users/check-identity, methods: [GET], roles: PUBLIC_ACCESS }
+    - { path: ^/api/auth/forgot-password, methods: [POST], roles: PUBLIC_ACCESS }
 
     # Reset password avec mot de passe temporaire
-    - { path: ^/api/auth/verify-temp-password, roles: PUBLIC_ACCESS }
-    - { path: ^/api/auth/reset-password, roles: PUBLIC_ACCESS }
+    - { path: ^/api/auth/verify-temp-password, methods: [POST], roles: PUBLIC_ACCESS }
+    - { path: ^/api/auth/reset-password, methods: [POST], roles: PUBLIC_ACCESS }
+
+    # Formulaire de contact : accessible aux visiteurs comme aux membres
+    - { path: ^/api/contact, methods: [POST], roles: PUBLIC_ACCESS }
 
     # Consultation des personnages en lecture seule : accessible aux visiteurs.
     - { path: ^/api/characters, methods: [GET], roles: PUBLIC_ACCESS }

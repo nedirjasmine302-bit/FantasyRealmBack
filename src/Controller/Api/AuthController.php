@@ -19,6 +19,26 @@ use Symfony\Component\Mime\Email;
 #[Route('/api', name: 'api_')]
 class AuthController extends AbstractController
 {
+  // Pour récupérer l'email et le pseudo de l'utilisateur connecté
+  #[Route('/me', name: 'me', methods: ['GET'])]
+  public function me(): JsonResponse
+  {
+    $user = $this->getUser();
+
+    if (!$user instanceof User) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Utilisateur non authentifié.'
+      ], 401);
+    }
+
+    return $this->json([
+      'email' => $user->getEmail(),
+      'pseudo' => $user->getPseudo()
+    ], 200);
+  }
+
+
   // Pour s'inscrire
   #[Route('/sign-up', name: 'sign_up', methods: ['POST'])]
   public function signUp(
