@@ -103,6 +103,56 @@ class AuthControllerTest extends WebTestCase
     $this->assertEquals('Ce pseudo est déjà utilisé.', $data['message']);
   }
 
+
+  // Pour tester la création d'un compte employeur
+  public function testEmployerSignUpSuccess(): void
+  {
+    $response = $this->post('/api/employer-sign-up', [
+      'email' => 'employer@mail.fr',
+      'pseudo' => 'Boss',
+      'password' => 'Test123!',
+      'password2' => 'Test123!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(201, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+
+    $user = static::getContainer()->get('doctrine')->getManager()
+      ->getRepository(\App\Entity\User::class)->findOneBy(['email' => 'employer@mail.fr']);
+    $this->assertContains('ROLE_EMPLOYER', $user->getRoles());
+  }
+
+  public function testEmployerPseudoTooLong(): void
+  {
+    $response = $this->post('/api/employer-sign-up', [
+      'email' => 'employer2@mail.fr',
+      'pseudo' => 'BossTooLong',
+      'password' => 'Test123!',
+      'password2' => 'Test123!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(400, $response->getStatusCode());
+    $this->assertEquals('Pseudo invalide (3 à 9 caractères, lettres, chiffres, _ -).', $data['message']);
+  }
+
+  public function testEmployerEmailAlreadyUsed(): void
+  {
+    $this->createUser();
+
+    $response = $this->post('/api/employer-sign-up', [
+      'email' => 'existing@mail.fr',
+      'pseudo' => 'Boss',
+      'password' => 'Test123!',
+      'password2' => 'Test123!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(400, $response->getStatusCode());
+    $this->assertEquals('Cet email est déjà utilisé.', $data['message']);
+  }
+
   public function testInvalidEmail(): void
   {
     $response = $this->post('/api/sign-up', [

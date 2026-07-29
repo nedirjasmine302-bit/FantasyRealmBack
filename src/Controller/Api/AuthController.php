@@ -107,6 +107,75 @@ class AuthController extends AbstractController
   }
 
 
+  // Pour créer un compte employeur
+  #[Route('/employer-sign-up', name: 'employer_sign_up', methods: ['POST'])]
+  public function employerSignUp(
+    Request $request,
+    EntityManagerInterface $em,
+    UserRepository $userRepository,
+    UserPasswordHasherInterface $passwordHasher
+  ): JsonResponse {
+    $data = json_decode($request->getContent(), true);
+
+    $email = $data['email'] ?? null;
+    $pseudo = $data['pseudo'] ?? null;
+    $password = $data['password'] ?? null;
+    $password2 = $data['password2'] ?? null;
+
+    $response = [
+      'success' => false,
+      'message' => ''
+    ];
+    $status = 400;
+
+    if (!$email || !$pseudo || !$password || !$password2) {
+      $response['message'] = 'Tous les champs sont obligatoires.';
+    } elseif ($password !== $password2) {
+      $response['message'] = 'La confirmation n\'est pas identique au mot de passe.';
+    } elseif (!preg_match('/^[^\s@]+@[^\s@]+\.[^\s@]+$/', $email)) {
+      $response['message'] = 'Email invalide.';
+    } elseif (!preg_match('/^[a-zA-Z0-9_-]{3,9}$/', $pseudo)) {
+      $response['message'] = 'Pseudo invalide (3 à 9 caractères, lettres, chiffres, _ -).';
+    } elseif (
+      strlen($password) < 8 ||
+      !preg_match('/[A-Z]/', $password) ||
+      !preg_match('/[a-z]/', $password) ||
+      !preg_match('/\d/', $password) ||
+      !preg_match('/[^A-Za-z0-9]/', $password)
+    ) {
+      $response['message'] = 'Mot de passe non conforme.';
+    } elseif ($userRepository->findOneBy(['email' => $email])) {
+      $response['message'] = 'Cet email est déjà utilisé.';
+    } elseif ($userRepository->findOneBy(['pseudo' => $pseudo])) {
+      $response['message'] = 'Ce pseudo est déjà utilisé.';
+    } else {
+      $user = new User();
+      $user->setEmail($email);
+      $user->setPseudo($pseudo);
+      $user->setRoles(['ROLE_EMPLOYER']);
+
+      $hashedPassword = $passwordHasher->hashPassword($user, $password);
+      $user->setPassword($hashedPassword);
+
+      $em->persist($user);
+      $em->flush();
+
+      $response = [
+        'success' => true,
+        'message' => 'Le compte employeur a été créé avec succès !',
+        'user' => [
+          'id' => $user->getId(),
+          'email' => $user->getEmail(),
+          'pseudo' => $user->getPseudo(),
+        ]
+      ];
+      $status = 201;
+    }
+
+    return $this->json($response, $status);
+  }
+
+
   // Pour vérifier si l'email est unique
   #[Route('/check-email', name: 'check_email', methods: ['GET'])]
   public function checkEmail(Request $request, UserRepository $repo): JsonResponse

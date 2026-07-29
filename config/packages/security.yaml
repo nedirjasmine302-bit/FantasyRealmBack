@@ -50,6 +50,9 @@ security:
     # Sign-up accessible sans être connecté
     - { path: ^/api/sign-up, methods: [POST], roles: PUBLIC_ACCESS }
 
+    # Création d'un compte employeur accessible sans être connecté
+    - { path: ^/api/employer-sign-up, methods: [POST], roles: PUBLIC_ACCESS }
+
     # Vérification d'unicité email/pseudo accessible sans être connecté
     - { path: ^/api/check-email, methods: [GET], roles: PUBLIC_ACCESS }
     - { path: ^/api/check-pseudo, methods: [GET], roles: PUBLIC_ACCESS }
