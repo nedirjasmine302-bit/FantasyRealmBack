@@ -579,9 +579,62 @@ class AuthController extends AbstractController
       $user->setTemporaryPasswordExpiresAt(null);
   
       $em->flush();
-  
+
       return $this->json([
           'success' => true
       ], 200);
+  }
+
+
+  // Pour réinitialiser le mot de passe d'un employé
+  #[Route('/auth/reset-employer-password', name: 'auth_reset_employer_password', methods: ['POST'])]
+  public function resetEmployerPassword(
+    Request $request,
+    UserRepository $userRepository,
+    UserPasswordHasherInterface $passwordHasher,
+    EntityManagerInterface $em
+  ): JsonResponse {
+    $data = json_decode($request->getContent(), true);
+
+    $email = $data['email'] ?? null;
+    $newPassword = $data['newPassword'] ?? null;
+
+    if (empty($email) || empty($newPassword)) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Email et nouveau mot de passe sont obligatoires.'
+      ], 400);
+    }
+
+    if (!$this->isStrongPassword($newPassword)) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Mot de passe non conforme.'
+      ], 400);
+    }
+
+    $user = $userRepository->findOneBy(['email' => $email]);
+
+    if (!$user || !in_array('ROLE_EMPLOYER', $user->getRoles(), true)) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Aucun employé trouvé avec cet email.'
+      ], 404);
+    }
+
+    if (!$user->isActive()) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Ce compte employé est suspendu.'
+      ], 403);
+    }
+
+    $user->setPassword($passwordHasher->hashPassword($user, $newPassword));
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Le mot de passe de l\'employé a été réinitialisé avec succès.'
+    ], 200);
   }
 }

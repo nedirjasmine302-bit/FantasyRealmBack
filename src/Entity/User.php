@@ -29,6 +29,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
   #[ORM\Column]
   private array $roles = [];
 
+  #[ORM\Column(options: ['default' => true])]
+  private bool $active = true;
+
   #[ORM\Column]
   private ?\DateTimeImmutable $createdAt = null;
 
@@ -142,6 +145,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
   public function removeFavorite(Character $favorite): static
   {
     $this->favorites->removeElement($favorite);
+    return $this;
+  }
+
+  public function isActive(): bool
+  {
+    return $this->active;
+  }
+
+  public function setActive(bool $active): static
+  {
+    $this->active = $active;
     return $this;
   }
 

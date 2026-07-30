@@ -66,6 +66,9 @@ security:
     - { path: ^/api/auth/verify-temp-password, methods: [POST], roles: PUBLIC_ACCESS }
     - { path: ^/api/auth/reset-password, methods: [POST], roles: PUBLIC_ACCESS }
 
+    # Réinitialisation du mot de passe d'un employé
+    - { path: ^/api/auth/reset-employer-password, methods: [POST], roles: PUBLIC_ACCESS }
+
     # Formulaire de contact : accessible aux visiteurs comme aux membres
     - { path: ^/api/contact, methods: [POST], roles: PUBLIC_ACCESS }
 

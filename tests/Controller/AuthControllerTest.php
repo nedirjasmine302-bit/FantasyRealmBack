@@ -153,6 +153,88 @@ class AuthControllerTest extends WebTestCase
     $this->assertEquals('Cet email est déjà utilisé.', $data['message']);
   }
 
+
+  // Pour tester la réinitialisation du mot de passe d'un employé
+  private function createEmployer(string $email = 'boss@mail.fr', bool $active = true): void
+  {
+    $em = static::getContainer()->get('doctrine')->getManager();
+    $hasher = static::getContainer()->get(\Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface::class);
+
+    $user = new \App\Entity\User();
+    $user->setEmail($email);
+    $user->setPseudo('Boss' . substr(md5($email), 0, 4));
+    $user->setRoles(['ROLE_EMPLOYER']);
+    $user->setActive($active);
+    $user->setPassword($hasher->hashPassword($user, 'Old123!'));
+
+    $em->persist($user);
+    $em->flush();
+  }
+
+  public function testResetEmployerPasswordSuccess(): void
+  {
+    $this->createEmployer('boss@mail.fr', true);
+
+    $response = $this->post('/api/auth/reset-employer-password', [
+      'email' => 'boss@mail.fr',
+      'newPassword' => 'NewPass1!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+  }
+
+  public function testResetEmployerEmailNotFound(): void
+  {
+    $response = $this->post('/api/auth/reset-employer-password', [
+      'email' => 'inconnu@mail.fr',
+      'newPassword' => 'NewPass1!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(404, $response->getStatusCode());
+    $this->assertEquals('Aucun employé trouvé avec cet email.', $data['message']);
+  }
+
+  public function testResetEmployerRejectsNonEmployee(): void
+  {
+    $this->createUser();
+
+    $response = $this->post('/api/auth/reset-employer-password', [
+      'email' => 'existing@mail.fr',
+      'newPassword' => 'NewPass1!'
+    ]);
+
+    $this->assertEquals(404, $response->getStatusCode());
+  }
+
+  public function testResetEmployerSuspended(): void
+  {
+    $this->createEmployer('suspendu@mail.fr', false);
+
+    $response = $this->post('/api/auth/reset-employer-password', [
+      'email' => 'suspendu@mail.fr',
+      'newPassword' => 'NewPass1!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(403, $response->getStatusCode());
+    $this->assertEquals('Ce compte employé est suspendu.', $data['message']);
+  }
+
+  public function testResetEmployerWeakPassword(): void
+  {
+    $this->createEmployer('boss@mail.fr', true);
+
+    $response = $this->post('/api/auth/reset-employer-password', [
+      'email' => 'boss@mail.fr',
+      'newPassword' => 'faible'
+    ]);
+
+    $this->assertEquals(400, $response->getStatusCode());
+  }
+
   public function testInvalidEmail(): void
   {
     $response = $this->post('/api/sign-up', [
