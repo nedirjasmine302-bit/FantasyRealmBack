@@ -34,7 +34,8 @@ class AuthController extends AbstractController
 
     return $this->json([
       'email' => $user->getEmail(),
-      'pseudo' => $user->getPseudo()
+      'pseudo' => $user->getPseudo(),
+      'roles' => $user->getRoles()
     ], 200);
   }
 
@@ -277,6 +278,16 @@ class AuthController extends AbstractController
       }
 
       $temporaryPassword = true;
+    }
+
+    if (!$user->isActive()) {
+      return $this->json([
+        'status' => 403,
+        'data' => [
+          'success' => false,
+          'message' => 'Compte suspendu.'
+        ]
+      ], 403);
     }
 
     $token = $jwtManager->create($user);

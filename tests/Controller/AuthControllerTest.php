@@ -235,6 +235,25 @@ class AuthControllerTest extends WebTestCase
     $this->assertEquals(400, $response->getStatusCode());
   }
 
+  public function testSuspendedUserCannotLogIn(): void
+  {
+    $this->createUser();
+
+    $em = static::getContainer()->get('doctrine')->getManager();
+    $user = $em->getRepository(\App\Entity\User::class)->findOneBy(['email' => 'existing@mail.fr']);
+    $user->setActive(false);
+    $em->flush();
+
+    $response = $this->post('/api/auth/sign-in', [
+      'email' => 'existing@mail.fr',
+      'password' => 'Test123!'
+    ]);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(403, $response->getStatusCode());
+    $this->assertEquals('Compte suspendu.', $data['data']['message']);
+  }
+
   public function testInvalidEmail(): void
   {
     $response = $this->post('/api/sign-up', [

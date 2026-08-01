@@ -75,6 +75,12 @@ security:
     # Consultation des personnages en lecture seule : accessible aux visiteurs.
     - { path: ^/api/characters, methods: [GET], roles: PUBLIC_ACCESS }
 
+    # Types d'accessoires : accessible aux visiteurs
+    - { path: ^/api/accessory-types, methods: [GET], roles: PUBLIC_ACCESS }
+
+    # Consultation des accessoires en lecture seule : accessible aux visiteurs
+    - { path: ^/api/accessories, methods: [GET], roles: PUBLIC_ACCESS }
+
     # Le reste des /api nécessite un JWT valide
     - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
