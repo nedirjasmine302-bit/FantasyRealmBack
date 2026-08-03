@@ -16,6 +16,27 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[Route('/api', name: 'api_')]
 class CharacterController extends AbstractController
 {
+  // Classes de personnage autorisées (value => label)
+  private const CLASSES = [
+    'warrior' => 'Guerrier',
+    'archer' => 'Archer',
+    'mage' => 'Mage',
+    'paladin' => 'Paladin',
+    'wizard' => 'Enchanteur',
+    'druid' => 'Druide',
+  ];
+
+  // Valeurs d'apparence autorisées, par attribut (value => label)
+  private const APPEARANCE = [
+    'hairColor' => ['blond' => 'Blond', 'brun' => 'Brun', 'noir' => 'Noir', 'roux' => 'Roux'],
+    'eyeColor' => ['bleu' => 'Bleu', 'vert' => 'Vert', 'marron' => 'Marron', 'noisette' => 'Noisette'],
+    'skinColor' => ['clair' => 'Clair', 'medium' => 'Medium', 'fonce' => 'Foncé'],
+    'mouthShape' => ['fine' => 'Fine', 'normale' => 'Normale', 'pulpeuse' => 'Pulpeuse'],
+    'eyeShape' => ['ronds' => 'Ronds', 'amande' => 'En amande', 'fermes' => 'Fermés'],
+    'noseShape' => ['fin' => 'Fin', 'large' => 'Large', 'pointu' => 'Pointu'],
+  ];
+
+
   // Pour créer un personnage
   #[Route('/characters', name: 'characters_create', methods: ['POST'])]
   public function create(Request $request, EntityManagerInterface $em): JsonResponse
@@ -51,6 +72,22 @@ class CharacterController extends AbstractController
       ], 400);
     }
 
+    if (!isset(self::CLASSES[$type])) {
+      return $this->json([
+        'success' => false,
+        'message' => 'La classe du personnage est invalide.'
+      ], 400);
+    }
+
+    $appearance = is_array($appearance) ? $appearance : [];
+
+    if ($appearanceError = $this->validateAppearance($appearance)) {
+      return $this->json([
+        'success' => false,
+        'message' => $appearanceError
+      ], 400);
+    }
+
     if (mb_strlen($description) < 30) {
       return $this->json([
         'success' => false,
@@ -70,7 +107,7 @@ class CharacterController extends AbstractController
     $character->setType($type);
     $character->setDescription($description);
     $character->setImage($image);
-    $character->setAppearance(is_array($appearance) ? $appearance : []);
+    $character->setAppearance($appearance);
     $character->setStatus('draft');
     $character->setCreator($user);
 
@@ -175,6 +212,13 @@ class CharacterController extends AbstractController
     if (isset($data['type'])) {
       $type = trim($data['type']);
 
+      if (!isset(self::CLASSES[$type])) {
+        return $this->json([
+          'success' => false,
+          'message' => 'La classe du personnage est invalide.'
+        ], 400);
+      }
+
       if ($type !== $character->getType()) {
         $mustRevalidate = true;
       }
@@ -208,6 +252,13 @@ class CharacterController extends AbstractController
     }
 
     if (isset($data['appearance']) && is_array($data['appearance'])) {
+      if ($appearanceError = $this->validateAppearance($data['appearance'])) {
+        return $this->json([
+          'success' => false,
+          'message' => $appearanceError
+        ], 400);
+      }
+
       if ($data['appearance'] != $character->getAppearance()) {
         $mustRevalidate = true;
       }
@@ -454,6 +505,50 @@ class CharacterController extends AbstractController
       'success' => true,
       'message' => 'Personnage supprimé.'
     ], 200);
+  }
+
+
+  // Pour récupérer toutes les options de personnage (classe + apparence)
+  #[Route('/character-options', name: 'character_options', methods: ['GET'])]
+  public function options(): JsonResponse
+  {
+    return $this->json([
+      'classes' => $this->formatOptions(self::CLASSES),
+      'hairColors' => $this->formatOptions(self::APPEARANCE['hairColor']),
+      'eyeColors' => $this->formatOptions(self::APPEARANCE['eyeColor']),
+      'skinColors' => $this->formatOptions(self::APPEARANCE['skinColor']),
+      'mouthShapes' => $this->formatOptions(self::APPEARANCE['mouthShape']),
+      'eyeShapes' => $this->formatOptions(self::APPEARANCE['eyeShape']),
+      'noseShapes' => $this->formatOptions(self::APPEARANCE['noseShape']),
+    ], 200);
+  }
+
+
+  // Transforme une map value => label en liste
+  private function formatOptions(array $map): array
+  {
+    return array_map(
+      fn ($value, $label) => ['value' => $value, 'label' => $label],
+      array_keys($map),
+      array_values($map)
+    );
+  }
+
+
+  // Vérifie que chaque attribut d'apparence est connu et a une valeur autorisée
+  private function validateAppearance(array $appearance): ?string
+  {
+    foreach ($appearance as $key => $value) {
+      if (!isset(self::APPEARANCE[$key])) {
+        return 'Attribut d\'apparence inconnu : ' . $key . '.';
+      }
+
+      if (!isset(self::APPEARANCE[$key][$value])) {
+        return 'Valeur d\'apparence invalide pour ' . $key . '.';
+      }
+    }
+
+    return null;
   }
 
 
