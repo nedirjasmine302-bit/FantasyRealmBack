@@ -78,6 +78,12 @@ security:
     # Types d'accessoires : accessible aux visiteurs
     - { path: ^/api/accessory-types, methods: [GET], roles: PUBLIC_ACCESS }
 
+    # Raretés d'accessoires : accessible aux visiteurs
+    - { path: ^/api/rarities, methods: [GET], roles: PUBLIC_ACCESS }
+
+    # Options de personnage (classe + apparence) : accessible aux visiteurs
+    - { path: ^/api/character-options, methods: [GET], roles: PUBLIC_ACCESS }
+
     # Consultation des accessoires en lecture seule : accessible aux visiteurs
     - { path: ^/api/accessories, methods: [GET], roles: PUBLIC_ACCESS }
 
