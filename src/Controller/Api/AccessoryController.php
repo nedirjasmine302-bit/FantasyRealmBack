@@ -15,14 +15,17 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[Route('/api', name: 'api_')]
 class AccessoryController extends AbstractController
 {
-  // Les types d'accessoires possibles
   private const TYPES = [
     ['value' => 'armor', 'label' => 'Armure'],
     ['value' => 'weapon', 'label' => 'Arme'],
     ['value' => 'relique', 'label' => 'Relique'],
   ];
 
-  private const RARITIES = ['standard', 'rare', 'legendary'];
+  private const RARITIES = [
+    ['value' => 'standard', 'label' => 'Standard'],
+    ['value' => 'rare', 'label' => 'Rare'],
+    ['value' => 'legendary', 'label' => 'Légendaire'],
+  ];
 
 
   // Pour récupérer les types d'accessoires disponibles
@@ -30,6 +33,14 @@ class AccessoryController extends AbstractController
   public function types(): JsonResponse
   {
     return $this->json(['types' => self::TYPES], 200);
+  }
+
+
+  // Pour récupérer les raretés disponibles
+  #[Route('/rarities', name: 'rarities', methods: ['GET'])]
+  public function rarities(): JsonResponse
+  {
+    return $this->json(['rarities' => self::RARITIES], 200);
   }
 
 
@@ -44,6 +55,25 @@ class AccessoryController extends AbstractController
         fn (Accessory $a) => $this->serializeAccessory($a),
         $accessories
       )
+    ], 200);
+  }
+
+
+  // Pour récupérer les détails d'un accessoire
+  #[Route('/accessories/{id}', name: 'accessories_show', methods: ['GET'], requirements: ['id' => '\d+'])]
+  public function show(int $id, AccessoryRepository $repo): JsonResponse
+  {
+    $accessory = $repo->find($id);
+
+    if (!$accessory) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Accessoire introuvable.'
+      ], 404);
+    }
+
+    return $this->json([
+      'accessory' => $this->serializeAccessory($accessory)
     ], 200);
   }
 
@@ -84,7 +114,7 @@ class AccessoryController extends AbstractController
       ], 400);
     }
 
-    if (!in_array($rarity, self::RARITIES, true)) {
+    if (!in_array($rarity, array_column(self::RARITIES, 'value'), true)) {
       return $this->json([
         'success' => false,
         'message' => 'La rareté de l\'accessoire est invalide.'

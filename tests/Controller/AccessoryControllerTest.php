@@ -103,6 +103,33 @@ class AccessoryControllerTest extends WebTestCase
   }
 
 
+  // Pour tester la récupération des détails d'un accessoire
+  public function testShowAccessoryIsPublic(): void
+  {
+    $token = $this->tokenFor($this->createUser());
+    $created = json_decode($this->post('/api/accessories', $this->validPayload(), $token)->getContent(), true);
+
+    $response = $this->get('/api/accessories/' . $created['accessory']['id']);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals('Lame', $data['accessory']['name']);
+    $this->assertEquals('weapon', $data['accessory']['type']);
+    $this->assertEquals('rare', $data['accessory']['rarity']);
+    $this->assertEquals('Employer', $data['accessory']['creator']);
+  }
+
+  public function testShowAccessoryNotFound(): void
+  {
+    $response = $this->get('/api/accessories/999');
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(404, $response->getStatusCode());
+    $this->assertFalse($data['success']);
+    $this->assertEquals('Accessoire introuvable.', $data['message']);
+  }
+
+
   // Pour tester la création d'un accessoire
   public function testCreateAccessorySuccess(): void
   {
