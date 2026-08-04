@@ -36,6 +36,9 @@ class Character
   #[ORM\Column(options: ['default' => false])]
   private bool $shared = false;
 
+  #[ORM\Column(options: ['default' => false])]
+  private bool $archivedByEmployer = false;
+
   #[ORM\Column(length: 100, nullable: true)]
   private ?string $armor = null;
 
@@ -136,6 +139,17 @@ class Character
   public function setShared(bool $shared): static
   {
     $this->shared = $shared;
+    return $this;
+  }
+
+  public function isArchivedByEmployer(): bool
+  {
+    return $this->archivedByEmployer;
+  }
+
+  public function setArchivedByEmployer(bool $archivedByEmployer): static
+  {
+    $this->archivedByEmployer = $archivedByEmployer;
     return $this;
   }
 

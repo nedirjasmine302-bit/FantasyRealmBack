@@ -339,6 +339,30 @@ class CharacterController extends AbstractController
     ], 200);
   }
 
+  // Pour archiver un personnage côté employeur
+  #[Route('/characters/{id}/archive', name: 'characters_archive', methods: ['PATCH'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function archive(int $id, CharacterRepository $repo, EntityManagerInterface $em): JsonResponse
+  {
+    $character = $repo->find($id);
+
+    if (!$character) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Personnage introuvable.'
+      ], 404);
+    }
+
+    $character->setArchivedByEmployer(true);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Personnage retiré de la liste de gestion.'
+    ], 200);
+  }
+
+
   // Pour lister les personnages de l'utilisateur connecté
   #[Route('/my-characters', name: 'characters_mine', methods: ['GET'])]
   public function mine(CharacterRepository $repo): JsonResponse
@@ -475,7 +499,7 @@ class CharacterController extends AbstractController
   }
 
 
-  // Pour supprimer son personnage
+  // Pour supprimer un personnage
   #[Route('/characters/{id}', name: 'characters_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
   public function delete(int $id, CharacterRepository $repo, CommentRepository $commentRepo, EntityManagerInterface $em): JsonResponse
   {
@@ -490,7 +514,7 @@ class CharacterController extends AbstractController
       return $this->json(['success' => false, 'message' => 'Personnage introuvable.'], 404);
     }
 
-    if ($character->getCreator()?->getId() !== $user->getId()) {
+    if ($character->getCreator()?->getId() !== $user->getId() && !$this->isGranted('ROLE_EMPLOYER')) {
       return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
     }
 
@@ -574,6 +598,7 @@ class CharacterController extends AbstractController
       'appearance' => $c->getAppearance(),
       'status' => $c->getStatus(),
       'shared' => $c->isShared(),
+      'archivedByEmployer' => $c->isArchivedByEmployer(),
       'armor' => $c->getArmor(),
       'weapon' => $c->getWeapon(),
       'relique' => $c->getRelique(),
