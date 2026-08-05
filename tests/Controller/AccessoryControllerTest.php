@@ -42,6 +42,37 @@ class AccessoryControllerTest extends WebTestCase
     return $this->client->getResponse();
   }
 
+  private function patch(string $url, ?string $token = null)
+  {
+    $headers = ['CONTENT_TYPE' => 'application/json'];
+    if ($token) {
+      $headers['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+    }
+
+    $this->client->request('PATCH', $url, [], [], $headers);
+
+    return $this->client->getResponse();
+  }
+
+  private function delete(string $url, ?string $token = null)
+  {
+    $headers = [];
+    if ($token) {
+      $headers['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+    }
+
+    $this->client->request('DELETE', $url, [], [], $headers);
+
+    return $this->client->getResponse();
+  }
+
+  private function createAccessory(?string $token = null): array
+  {
+    $token = $token ?? $this->tokenFor($this->createUser());
+
+    return json_decode($this->post('/api/accessories', $this->validPayload(), $token)->getContent(), true);
+  }
+
   private function createUser(string $email = 'employer@mail.fr', string $pseudo = 'Employer', array $roles = ['ROLE_EMPLOYER']): User
   {
     $entityManager = static::getContainer()->get('doctrine')->getManager();
@@ -251,5 +282,112 @@ class AccessoryControllerTest extends WebTestCase
 
     $this->assertEquals(400, $response->getStatusCode());
     $this->assertEquals('L\'image de l\'accessoire est obligatoire.', $data['message']);
+  }
+
+
+  // Pour tester qu'un accessoire est actif par défaut
+  public function testAccessoryIsActiveByDefault(): void
+  {
+    $created = $this->createAccessory();
+
+    $this->assertTrue($created['accessory']['active']);
+  }
+
+
+  // Pour tester l'activation / désactivation d'un accessoire
+  public function testToggleActiveAsEmployer(): void
+  {
+    $token = $this->tokenFor($this->createUser());
+    $created = $this->createAccessory($token);
+    $id = $created['accessory']['id'];
+
+    $response = $this->patch('/api/accessories/' . $id . '/active', $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+    $this->assertFalse($data['active']);
+
+    $response = $this->patch('/api/accessories/' . $id . '/active', $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertTrue($data['active']);
+  }
+
+  public function testToggleActiveRequiresAuth(): void
+  {
+    $created = $this->createAccessory();
+
+    $response = $this->patch('/api/accessories/' . $created['accessory']['id'] . '/active');
+
+    $this->assertEquals(401, $response->getStatusCode());
+  }
+
+  public function testToggleActiveForbiddenForRegularUser(): void
+  {
+    $created = $this->createAccessory();
+    $playerToken = $this->tokenFor($this->createUser('player@mail.fr', 'Player', []));
+
+    $response = $this->patch('/api/accessories/' . $created['accessory']['id'] . '/active', $playerToken);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testToggleActiveNotFound(): void
+  {
+    $token = $this->tokenFor($this->createUser());
+
+    $response = $this->patch('/api/accessories/999/active', $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(404, $response->getStatusCode());
+    $this->assertEquals('Accessoire introuvable.', $data['message']);
+  }
+
+
+  // Pour tester la suppression définitive d'un accessoire
+  public function testDeleteAccessoryAsEmployer(): void
+  {
+    $token = $this->tokenFor($this->createUser());
+    $created = $this->createAccessory($token);
+    $id = $created['accessory']['id'];
+
+    $response = $this->delete('/api/accessories/' . $id, $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+
+    $this->assertEquals(404, $this->get('/api/accessories/' . $id)->getStatusCode());
+  }
+
+  public function testDeleteAccessoryRequiresAuth(): void
+  {
+    $created = $this->createAccessory();
+
+    $response = $this->delete('/api/accessories/' . $created['accessory']['id']);
+
+    $this->assertEquals(401, $response->getStatusCode());
+  }
+
+  public function testDeleteAccessoryForbiddenForRegularUser(): void
+  {
+    $created = $this->createAccessory();
+    $playerToken = $this->tokenFor($this->createUser('player@mail.fr', 'Player', []));
+
+    $response = $this->delete('/api/accessories/' . $created['accessory']['id'], $playerToken);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testDeleteAccessoryNotFound(): void
+  {
+    $token = $this->tokenFor($this->createUser());
+
+    $response = $this->delete('/api/accessories/999', $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(404, $response->getStatusCode());
+    $this->assertEquals('Accessoire introuvable.', $data['message']);
   }
 }

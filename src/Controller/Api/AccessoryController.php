@@ -154,6 +154,56 @@ class AccessoryController extends AbstractController
   }
 
 
+  // Pour activer ou désactiver un accessoire
+  #[Route('/accessories/{id}/active', name: 'accessories_toggle_active', methods: ['PATCH'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function toggleActive(int $id, AccessoryRepository $repo, EntityManagerInterface $em): JsonResponse
+  {
+    $accessory = $repo->find($id);
+
+    if (!$accessory) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Accessoire introuvable.'
+      ], 404);
+    }
+
+    $accessory->setActive(!$accessory->isActive());
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => $accessory->isActive() ? 'Accessoire activé.' : 'Accessoire désactivé.',
+      'active' => $accessory->isActive(),
+      'accessory' => $this->serializeAccessory($accessory)
+    ], 200);
+  }
+
+
+  // Pour supprimer définitivement un accessoire
+  #[Route('/accessories/{id}', name: 'accessories_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function delete(int $id, AccessoryRepository $repo, EntityManagerInterface $em): JsonResponse
+  {
+    $accessory = $repo->find($id);
+
+    if (!$accessory) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Accessoire introuvable.'
+      ], 404);
+    }
+
+    $em->remove($accessory);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Accessoire supprimé.'
+    ], 200);
+  }
+
+
   // Pour transformer un Accessory en tableau JSON
   private function serializeAccessory(Accessory $a): array
   {
@@ -164,6 +214,7 @@ class AccessoryController extends AbstractController
       'rarity' => $a->getRarity(),
       'description' => $a->getDescription(),
       'image' => $a->getImage(),
+      'active' => $a->isActive(),
       'creator' => $a->getCreator()?->getPseudo(),
       'createdAt' => $a->getCreatedAt()?->format(\DateTimeInterface::ATOM)
     ];

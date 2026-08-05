@@ -33,6 +33,9 @@ class Accessory
   #[ORM\JoinColumn(nullable: false)]
   private ?User $creator = null;
 
+  #[ORM\Column(options: ['default' => true])]
+  private bool $active = true;
+
   #[ORM\Column]
   private ?\DateTimeImmutable $createdAt = null;
 
@@ -109,6 +112,17 @@ class Accessory
   public function setCreator(?User $creator): static
   {
     $this->creator = $creator;
+    return $this;
+  }
+
+  public function isActive(): bool
+  {
+    return $this->active;
+  }
+
+  public function setActive(bool $active): static
+  {
+    $this->active = $active;
     return $this;
   }
 
