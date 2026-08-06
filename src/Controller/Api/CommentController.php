@@ -10,6 +10,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
@@ -143,7 +145,8 @@ class CommentController extends AbstractController
     int $id,
     Request $request,
     CommentRepository $commentRepo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    MailerInterface $mailer
   ): JsonResponse {
     $comment = $commentRepo->find($id);
 
@@ -167,10 +170,56 @@ class CommentController extends AbstractController
     $comment->setStatus($status);
     $em->flush();
 
+    if ($status === 'valid') {
+      $this->sendCommentApprovalMail($mailer, $comment);
+    }
+
     return $this->json([
       'success' => true,
       'message' => 'Statut mis à jour.',
       'comment' => $this->serializeComment($comment)
+    ], 200);
+  }
+
+
+  // Pour refuser un commentaire : motif obligatoire, mail à l'auteur puis suppression définitive
+  #[Route('/comments/{id}/reject', name: 'comments_reject', methods: ['POST'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function reject(
+    int $id,
+    Request $request,
+    CommentRepository $commentRepo,
+    EntityManagerInterface $em,
+    MailerInterface $mailer
+  ): JsonResponse {
+    $comment = $commentRepo->find($id);
+
+    if (!$comment) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Commentaire introuvable.'
+      ], 404);
+    }
+
+    $data = json_decode($request->getContent(), true) ?? [];
+    $reason = trim($data['reason'] ?? '');
+
+    if (mb_strlen($reason) < 10) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Un motif de refus d\'au moins 10 caractères est obligatoire.'
+      ], 400);
+    }
+
+    // On prévient l'auteur avant la suppression définitive
+    $this->sendCommentRejectionMail($mailer, $comment, $reason);
+
+    $em->remove($comment);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Commentaire refusé et supprimé.'
     ], 200);
   }
 
@@ -196,6 +245,58 @@ class CommentController extends AbstractController
       'success' => true,
       'message' => 'Commentaire supprimé.'
     ], 200);
+  }
+
+
+  // Envoie un mail à l'auteur quand son commentaire est validé
+  private function sendCommentApprovalMail(MailerInterface $mailer, Comment $comment): void
+  {
+    $author = $comment->getAuthor();
+
+    if (!$author || !$author->getEmail()) {
+      return;
+    }
+
+    $characterName = $comment->getCharacter()?->getName() ?? 'un personnage';
+
+    $mail = (new Email())
+      ->from('no-reply@fantasyrealm-online.com')
+      ->to($author->getEmail())
+      ->subject('Votre commentaire a été validé')
+      ->text(sprintf(
+        "Bonjour %s,\n\nVotre commentaire sur le personnage \"%s\" a été validé et est désormais visible sur FantasyRealm Online.\n\nMerci pour votre participation !",
+        $author->getPseudo(),
+        $characterName
+      ));
+
+    $mailer->send($mail);
+  }
+
+
+  // Envoie un mail à l'auteur quand son commentaire est refusé (avec le motif)
+  private function sendCommentRejectionMail(MailerInterface $mailer, Comment $comment, string $reason): void
+  {
+    $author = $comment->getAuthor();
+
+    if (!$author || !$author->getEmail()) {
+      return;
+    }
+
+    $characterName = $comment->getCharacter()?->getName() ?? 'un personnage';
+
+    $mail = (new Email())
+      ->from('no-reply@fantasyrealm-online.com')
+      ->to($author->getEmail())
+      ->subject('Votre commentaire a été refusé')
+      ->text(sprintf(
+        "Bonjour %s,\n\nVotre commentaire sur le personnage \"%s\" n'a pas été validé et a été supprimé.\n\nVotre commentaire :\n\"%s\"\n\nMotif du refus :\n%s\n\nÀ bientôt sur FantasyRealm Online !",
+        $author->getPseudo(),
+        $characterName,
+        $comment->getMessage(),
+        $reason
+      ));
+
+    $mailer->send($mail);
   }
 
 

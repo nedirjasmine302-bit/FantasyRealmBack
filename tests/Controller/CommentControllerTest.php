@@ -350,4 +350,88 @@ class CommentControllerTest extends WebTestCase
 
     $this->assertEquals(404, $response->getStatusCode());
   }
+
+
+  // Pour tester le refus d'un commentaire
+  public function testRejectRequiresEmployer(): void
+  {
+    $user = $this->createUser();
+    $character = $this->createCharacter($user);
+    $comment = $this->createComment($user, $character, 'pending');
+    $token = $this->tokenFor($user);
+
+    $response = $this->post('/api/comments/' . $comment->getId() . '/reject', ['reason' => 'Propos déplacés.'], $token);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testRejectRequiresReason(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($employer, $character, 'pending');
+    $token = $this->tokenFor($employer);
+
+    $response = $this->post('/api/comments/' . $comment->getId() . '/reject', ['reason' => ''], $token);
+
+    $this->assertEquals(400, $response->getStatusCode());
+  }
+
+  public function testRejectAsEmployerDeletesComment(): void
+  {
+    $author = $this->createUser('author@mail.fr', 'Author');
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($author, $character, 'pending');
+    $id = $comment->getId();
+    $token = $this->tokenFor($employer);
+
+    $response = $this->post('/api/comments/' . $id . '/reject', ['reason' => 'Commentaire hors sujet.'], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+    $this->assertEquals(404, $this->get('/api/comments/' . $id)->getStatusCode());
+  }
+
+  public function testRejectSendsMailToAuthor(): void
+  {
+    $author = $this->createUser('author@mail.fr', 'Author');
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($author, $character, 'pending');
+    $token = $this->tokenFor($employer);
+
+    $this->post('/api/comments/' . $comment->getId() . '/reject', ['reason' => 'Commentaire hors sujet.'], $token);
+
+    $this->assertEmailCount(1);
+    $email = $this->getMailerMessage(0);
+    $this->assertEmailAddressContains($email, 'To', 'author@mail.fr');
+    $this->assertEmailTextBodyContains($email, 'Commentaire hors sujet.');
+    $this->assertEmailTextBodyContains($email, 'Un commentaire assez long pour être valide et lisible.');
+  }
+
+  public function testRejectNotFound(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $response = $this->post('/api/comments/999999/reject', ['reason' => 'Inexistant.'], $token);
+
+    $this->assertEquals(404, $response->getStatusCode());
+  }
+
+  public function testApprovalSendsMailToAuthor(): void
+  {
+    $author = $this->createUser('author@mail.fr', 'Author');
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($author, $character, 'pending');
+    $token = $this->tokenFor($employer);
+
+    $this->patch('/api/comments/' . $comment->getId() . '/status', ['status' => 'valid'], $token);
+
+    $this->assertEmailCount(1);
+    $this->assertEmailAddressContains($this->getMailerMessage(0), 'To', 'author@mail.fr');
+  }
 }

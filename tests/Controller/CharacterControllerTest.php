@@ -605,4 +605,114 @@ class CharacterControllerTest extends WebTestCase
 
     $this->assertEquals(0, $this->countFavorites($character->getId()));
   }
+
+
+  // Pour tester le refus d'un personnage
+  public function testRejectRequiresEmployer(): void
+  {
+    $owner = $this->createUser();
+    $character = $this->createCharacter($owner, 'pending');
+    $token = $this->tokenFor($owner);
+
+    $response = $this->post('/api/characters/' . $character->getId() . '/reject', [
+      'reason' => 'Nom inapproprié.'
+    ], $token);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testRejectRequiresReason(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'pending');
+
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $response = $this->post('/api/characters/' . $character->getId() . '/reject', [
+      'reason' => ''
+    ], $token);
+
+    $this->assertEquals(400, $response->getStatusCode());
+  }
+
+  public function testRejectByEmployerDeletesCharacter(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'pending');
+    $id = $character->getId();
+
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $response = $this->post('/api/characters/' . $id . '/reject', [
+      'reason' => 'Le nom ne respecte pas la charte.'
+    ], $token);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals(404, $this->get('/api/characters/' . $id)->getStatusCode());
+  }
+
+  public function testRejectSendsMailToOwner(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'pending');
+
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $this->post('/api/characters/' . $character->getId() . '/reject', [
+      'reason' => 'Le nom ne respecte pas la charte.'
+    ], $token);
+
+    $this->assertEmailCount(1);
+    $email = $this->getMailerMessage();
+    $this->assertEmailAddressContains($email, 'To', 'owner@mail.fr');
+    $this->assertEmailTextBodyContains($email, 'Le nom ne respecte pas la charte.');
+  }
+
+  public function testRejectNotFound(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $response = $this->post('/api/characters/999999/reject', [
+      'reason' => 'Personnage inexistant.'
+    ], $token);
+
+    $this->assertEquals(404, $response->getStatusCode());
+  }
+
+  public function testRejectRemovesFromAllFavorites(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'valid');
+
+    $fan = $this->createUser('fan@mail.fr', 'Fan');
+    $this->post('/api/characters/' . $character->getId() . '/favorite', [], $this->tokenFor($fan));
+    $this->assertEquals(1, $this->countFavorites($character->getId()));
+
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $this->post('/api/characters/' . $character->getId() . '/reject', [
+      'reason' => 'Contenu non conforme.'
+    ], $this->tokenFor($employer));
+
+    $this->assertEquals(0, $this->countFavorites($character->getId()));
+  }
+
+  public function testApprovalSendsMailToOwner(): void
+  {
+    $owner = $this->createUser('owner@mail.fr', 'Owner');
+    $character = $this->createCharacter($owner, 'pending');
+
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $this->patch('/api/characters/' . $character->getId() . '/status', [
+      'status' => 'valid'
+    ], $token);
+
+    $this->assertEmailCount(1);
+    $this->assertEmailAddressContains($this->getMailerMessage(), 'To', 'owner@mail.fr');
+  }
 }

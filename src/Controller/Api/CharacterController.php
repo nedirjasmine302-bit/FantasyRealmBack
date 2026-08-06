@@ -10,6 +10,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
@@ -303,7 +305,8 @@ class CharacterController extends AbstractController
     int $id,
     Request $request,
     CharacterRepository $repo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    MailerInterface $mailer
   ): JsonResponse {
     $character = $repo->find($id);
 
@@ -332,10 +335,62 @@ class CharacterController extends AbstractController
 
     $em->flush();
 
+    if ($status === 'valid') {
+      $this->sendCharacterApprovalMail($mailer, $character);
+    }
+
     return $this->json([
       'success' => true,
       'message' => 'Statut mis à jour.',
       'character' => $this->serializeCharacter($character)
+    ], 200);
+  }
+
+
+  // Pour refuser un personnage : motif obligatoire, mail au propriétaire puis suppression définitive
+  #[Route('/characters/{id}/reject', name: 'characters_reject', methods: ['POST'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function reject(
+    int $id,
+    Request $request,
+    CharacterRepository $repo,
+    CommentRepository $commentRepo,
+    EntityManagerInterface $em,
+    MailerInterface $mailer
+  ): JsonResponse {
+    $character = $repo->find($id);
+
+    if (!$character) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Personnage introuvable.'
+      ], 404);
+    }
+
+    $data = json_decode($request->getContent(), true) ?? [];
+    $reason = trim($data['reason'] ?? '');
+
+    if (mb_strlen($reason) < 10) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Un motif de refus d\'au moins 10 caractères est obligatoire.'
+      ], 400);
+    }
+
+    $this->sendCharacterRejectionMail($mailer, $character, $reason);
+
+    $this->purgeFavorites($em, $character->getId());
+
+    foreach ($commentRepo->findBy(['character' => $character]) as $comment) {
+      $em->remove($comment);
+    }
+
+    $em->remove($character);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Personnage refusé et supprimé.'
     ], 200);
   }
 
@@ -518,6 +573,8 @@ class CharacterController extends AbstractController
       return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
     }
 
+    $this->purgeFavorites($em, $character->getId());
+
     foreach ($commentRepo->findBy(['character' => $character]) as $comment) {
       $em->remove($comment);
     }
@@ -529,6 +586,53 @@ class CharacterController extends AbstractController
       'success' => true,
       'message' => 'Personnage supprimé.'
     ], 200);
+  }
+
+
+  // Envoie un mail au propriétaire quand son personnage est validé
+  private function sendCharacterApprovalMail(MailerInterface $mailer, Character $character): void
+  {
+    $creator = $character->getCreator();
+
+    if (!$creator || !$creator->getEmail()) {
+      return;
+    }
+
+    $mail = (new Email())
+      ->from('no-reply@fantasyrealm-online.com')
+      ->to($creator->getEmail())
+      ->subject('Votre personnage a été validé')
+      ->text(sprintf(
+        "Bonjour %s,\n\nBonne nouvelle : votre personnage \"%s\" a été validé par notre équipe.\nIl est désormais disponible sur FantasyRealm Online.\n\nÀ bientôt !",
+        $creator->getPseudo(),
+        $character->getName()
+      ));
+
+    $mailer->send($mail);
+  }
+
+
+  // Envoie un mail au propriétaire quand son personnage est refusé
+  private function sendCharacterRejectionMail(MailerInterface $mailer, Character $character, string $reason): void
+  {
+    $creator = $character->getCreator();
+
+    if (!$creator || !$creator->getEmail()) {
+      return;
+    }
+
+    $mail = (new Email())
+      ->from('no-reply@fantasyrealm-online.com')
+      ->to($creator->getEmail())
+      ->subject('Votre personnage a été refusé')
+      ->text(sprintf(
+        "Bonjour %s,\n\nVotre personnage \"%s\" n'a pas été validé et a été supprimé.\n\nMotif du refus :\n%s\n\nVous pouvez créer un nouveau personnage en tenant compte de cette remarque.\n\nÀ bientôt sur FantasyRealm Online !",
+        $creator->getPseudo(),
+        $character->getName(),
+        $reason
+      ));
+
+    $mailer->send($mail);
   }
 
 
