@@ -11,6 +11,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/api', name: 'api_')]
 class CommentController extends AbstractController
@@ -86,7 +87,7 @@ class CommentController extends AbstractController
     $comment = new Comment();
     $comment->setMessage($message);
     $comment->setRating($rating);
-    $comment->setStatus('pending'); //à faire valider par un employé
+    $comment->setStatus('pending');
     $comment->setAuthor($user);
     $comment->setCharacter($character);
 
@@ -101,16 +102,120 @@ class CommentController extends AbstractController
   }
 
 
+  // Pour lister tous les commentaires
+  #[Route('/comments', name: 'comments_all', methods: ['GET'])]
+  public function all(CommentRepository $commentRepo): JsonResponse
+  {
+    $comments = $commentRepo->findBy([], ['createdAt' => 'DESC']);
+
+    return $this->json([
+      'comments' => array_map(
+        fn (Comment $c) => $this->serializeComment($c),
+        $comments
+      )
+    ], 200);
+  }
+
+
+  // Pour récupérer le détail d'un commentaire
+  #[Route('/comments/{id}', name: 'comments_show', methods: ['GET'], requirements: ['id' => '\d+'])]
+  public function show(int $id, CommentRepository $commentRepo): JsonResponse
+  {
+    $comment = $commentRepo->find($id);
+
+    if (!$comment) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Commentaire introuvable.'
+      ], 404);
+    }
+
+    return $this->json([
+      'comment' => $this->serializeComment($comment)
+    ], 200);
+  }
+
+
+  // Pour valider ou refuser un commentaire
+  #[Route('/comments/{id}/status', name: 'comments_status', methods: ['PATCH'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function updateStatus(
+    int $id,
+    Request $request,
+    CommentRepository $commentRepo,
+    EntityManagerInterface $em
+  ): JsonResponse {
+    $comment = $commentRepo->find($id);
+
+    if (!$comment) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Commentaire introuvable.'
+      ], 404);
+    }
+
+    $data = json_decode($request->getContent(), true) ?? [];
+    $status = $data['status'] ?? null;
+
+    if (!in_array($status, ['pending', 'valid', 'refused'], true)) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Statut invalide (pending, valid ou refused).'
+      ], 400);
+    }
+
+    $comment->setStatus($status);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Statut mis à jour.',
+      'comment' => $this->serializeComment($comment)
+    ], 200);
+  }
+
+
+  // Pour supprimer définitivement un commentaire
+  #[Route('/comments/{id}', name: 'comments_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
+  #[IsGranted('ROLE_EMPLOYER')]
+  public function delete(int $id, CommentRepository $commentRepo, EntityManagerInterface $em): JsonResponse
+  {
+    $comment = $commentRepo->find($id);
+
+    if (!$comment) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Commentaire introuvable.'
+      ], 404);
+    }
+
+    $em->remove($comment);
+    $em->flush();
+
+    return $this->json([
+      'success' => true,
+      'message' => 'Commentaire supprimé.'
+    ], 200);
+  }
+
+
   // Pour transformer un Comment en tableau JSON
   private function serializeComment(Comment $c): array
   {
+    $character = $c->getCharacter();
+
     return [
       'id' => $c->getId(),
       'author' => $c->getAuthor()?->getPseudo(),
       'message' => $c->getMessage(),
       'rating' => $c->getRating(),
       'status' => $c->getStatus(),
-      'createdAt' => $c->getCreatedAt()?->format(\DateTimeInterface::ATOM)
+      'createdAt' => $c->getCreatedAt()?->format(\DateTimeInterface::ATOM),
+      'character' => [
+        'id' => $character?->getId(),
+        'name' => $character?->getName(),
+        'image' => $character?->getImage()
+      ]
     ];
   }
 }

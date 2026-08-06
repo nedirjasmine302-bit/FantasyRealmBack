@@ -46,6 +46,30 @@ class CommentControllerTest extends WebTestCase
     return $this->client->getResponse();
   }
 
+  private function patch(string $url, array $payload, ?string $token = null)
+  {
+    $headers = ['CONTENT_TYPE' => 'application/json'];
+    if ($token) {
+      $headers['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+    }
+
+    $this->client->request('PATCH', $url, [], [], $headers, json_encode($payload));
+
+    return $this->client->getResponse();
+  }
+
+  private function delete(string $url, ?string $token = null)
+  {
+    $headers = [];
+    if ($token) {
+      $headers['HTTP_AUTHORIZATION'] = 'Bearer ' . $token;
+    }
+
+    $this->client->request('DELETE', $url, [], [], $headers);
+
+    return $this->client->getResponse();
+  }
+
   private function createUser(string $email = 'player@mail.fr', string $pseudo = 'Player', array $roles = []): User
   {
     $entityManager = static::getContainer()->get('doctrine')->getManager();
@@ -194,5 +218,136 @@ class CommentControllerTest extends WebTestCase
 
     $this->assertEquals(400, $response->getStatusCode());
     $this->assertEquals('La note doit être comprise entre 1 et 5.', $data['message']);
+  }
+
+
+  // Pour tester la récupération de tous les commentaires
+  public function testAllReturnsEveryComment(): void
+  {
+    $user = $this->createUser();
+    $character = $this->createCharacter($user);
+    $this->createComment($user, $character, 'valid');
+    $this->createComment($user, $character, 'pending');
+    $this->createComment($user, $character, 'refused');
+
+    $response = $this->get('/api/comments');
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertCount(3, $data['comments']);
+    $this->assertEquals('Aelyra', $data['comments'][0]['character']['name']);
+  }
+
+
+  // Pour tester la récupération du détail d'un commentaire
+  public function testShowReturnsComment(): void
+  {
+    $user = $this->createUser();
+    $character = $this->createCharacter($user);
+    $comment = $this->createComment($user, $character, 'pending');
+
+    $response = $this->get('/api/comments/' . $comment->getId());
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertEquals('Player', $data['comment']['author']);
+    $this->assertEquals(4, $data['comment']['rating']);
+    $this->assertEquals('pending', $data['comment']['status']);
+  }
+
+  public function testShowCommentNotFound(): void
+  {
+    $response = $this->get('/api/comments/999999');
+
+    $this->assertEquals(404, $response->getStatusCode());
+  }
+
+
+  // Pour tester la validation / le refus d'un commentaire
+  public function testUpdateStatusAsEmployer(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($employer, $character, 'pending');
+    $token = $this->tokenFor($employer);
+
+    $response = $this->patch('/api/comments/' . $comment->getId() . '/status', ['status' => 'valid'], $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+    $this->assertEquals('valid', $data['comment']['status']);
+  }
+
+  public function testUpdateStatusRequiresEmployer(): void
+  {
+    $user = $this->createUser();
+    $character = $this->createCharacter($user);
+    $comment = $this->createComment($user, $character, 'pending');
+    $token = $this->tokenFor($user);
+
+    $response = $this->patch('/api/comments/' . $comment->getId() . '/status', ['status' => 'valid'], $token);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testUpdateStatusInvalid(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($employer, $character, 'pending');
+    $token = $this->tokenFor($employer);
+
+    $response = $this->patch('/api/comments/' . $comment->getId() . '/status', ['status' => 'unknown'], $token);
+
+    $this->assertEquals(400, $response->getStatusCode());
+  }
+
+  public function testUpdateStatusNotFound(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $response = $this->patch('/api/comments/999999/status', ['status' => 'valid'], $token);
+
+    $this->assertEquals(404, $response->getStatusCode());
+  }
+
+
+  // Pour tester la suppression d'un commentaire
+  public function testDeleteAsEmployer(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $character = $this->createCharacter($employer);
+    $comment = $this->createComment($employer, $character, 'refused');
+    $token = $this->tokenFor($employer);
+
+    $response = $this->delete('/api/comments/' . $comment->getId(), $token);
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(200, $response->getStatusCode());
+    $this->assertTrue($data['success']);
+  }
+
+  public function testDeleteRequiresEmployer(): void
+  {
+    $user = $this->createUser();
+    $character = $this->createCharacter($user);
+    $comment = $this->createComment($user, $character, 'refused');
+    $token = $this->tokenFor($user);
+
+    $response = $this->delete('/api/comments/' . $comment->getId(), $token);
+
+    $this->assertEquals(403, $response->getStatusCode());
+  }
+
+  public function testDeleteNotFound(): void
+  {
+    $employer = $this->createUser('employer@mail.fr', 'Employer', ['ROLE_EMPLOYER']);
+    $token = $this->tokenFor($employer);
+
+    $response = $this->delete('/api/comments/999999', $token);
+
+    $this->assertEquals(404, $response->getStatusCode());
   }
 }
