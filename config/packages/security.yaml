@@ -90,6 +90,9 @@ security:
     # Consultation des commentaires en lecture seule : accessible aux visiteurs
     - { path: ^/api/comments, methods: [GET], roles: PUBLIC_ACCESS }
 
+    # Liste des joueurs pour le management
+    - { path: ^/api/players, methods: [GET], roles: PUBLIC_ACCESS }
+
     # Le reste des /api nécessite un JWT valide
     - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 

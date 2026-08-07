@@ -28,5 +28,19 @@ class UserRepository extends ServiceEntityRepository
       'pseudo' => $pseudo
     ]) !== null;
   }
+
+  /**
+   * Retourne les joueurs : utilisateurs sans rôle employeur ni administrateur.
+   *
+   * @return User[]
+   */
+  public function findPlayers(): array
+  {
+    return array_values(array_filter(
+      $this->findBy([], ['createdAt' => 'DESC']),
+      fn (User $u) => !in_array('ROLE_EMPLOYER', $u->getRoles(), true)
+        && !in_array('ROLE_ADMIN', $u->getRoles(), true)
+    ));
+  }
 }
 
