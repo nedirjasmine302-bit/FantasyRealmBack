@@ -42,5 +42,19 @@ class UserRepository extends ServiceEntityRepository
         && !in_array('ROLE_ADMIN', $u->getRoles(), true)
     ));
   }
+
+  /**
+   * Retourne les employés : utilisateurs avec le rôle employeur mais pas administrateur.
+   *
+   * @return User[]
+   */
+  public function findEmployers(): array
+  {
+    return array_values(array_filter(
+      $this->findBy([], ['createdAt' => 'DESC']),
+      fn (User $u) => in_array('ROLE_EMPLOYER', $u->getRoles(), true)
+        && !in_array('ROLE_ADMIN', $u->getRoles(), true)
+    ));
+  }
 }
 
