@@ -6,6 +6,7 @@ use App\Entity\User;
 use App\Repository\CharacterRepository;
 use App\Repository\CommentRepository;
 use App\Repository\UserRepository;
+use App\Service\ActivityLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -36,7 +37,8 @@ class PlayerController extends AbstractController
     int $id,
     Request $request,
     UserRepository $userRepo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    ActivityLogger $logger
   ): JsonResponse {
     $player = $userRepo->find($id);
 
@@ -67,6 +69,17 @@ class PlayerController extends AbstractController
     $player->setActive($status === 'active');
     $em->flush();
 
+    $admin = $this->getUser();
+    $reactivated = $status === 'active';
+    $logger->log(
+      $admin instanceof User ? $admin : null,
+      'suspend',
+      $reactivated ? 'Réactivation d\'un joueur' : 'Suspension d\'un joueur',
+      $logger->actorLabel($admin instanceof User ? $admin : null) . ($reactivated
+        ? ' a réactivé le joueur ' . $player->getPseudo() . '.'
+        : ' a suspendu le joueur ' . $player->getPseudo() . '.')
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Statut mis à jour.',
@@ -83,7 +96,8 @@ class PlayerController extends AbstractController
     UserRepository $userRepo,
     CharacterRepository $characterRepo,
     CommentRepository $commentRepo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    ActivityLogger $logger
   ): JsonResponse {
     $player = $userRepo->find($id);
 
@@ -120,8 +134,18 @@ class PlayerController extends AbstractController
       ['id' => $player->getId()]
     );
 
+    $playerPseudo = $player->getPseudo();
+
     $em->remove($player);
     $em->flush();
+
+    $admin = $this->getUser();
+    $logger->log(
+      $admin instanceof User ? $admin : null,
+      'delete',
+      'Suppression d\'un joueur',
+      $logger->actorLabel($admin instanceof User ? $admin : null) . ' a supprimé le joueur ' . $playerPseudo . '.'
+    );
 
     return $this->json([
       'success' => true,

@@ -7,6 +7,7 @@ use App\Repository\AccessoryRepository;
 use App\Repository\CharacterRepository;
 use App\Repository\CommentRepository;
 use App\Repository\UserRepository;
+use App\Service\ActivityLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -37,7 +38,8 @@ class EmployerController extends AbstractController
     int $id,
     Request $request,
     UserRepository $userRepo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    ActivityLogger $logger
   ): JsonResponse {
     $employer = $userRepo->find($id);
 
@@ -68,6 +70,17 @@ class EmployerController extends AbstractController
     $employer->setActive($status === 'active');
     $em->flush();
 
+    $admin = $this->getUser();
+    $reactivated = $status === 'active';
+    $logger->log(
+      $admin instanceof User ? $admin : null,
+      'suspend',
+      $reactivated ? 'Réactivation d\'un employé' : 'Suspension d\'un employé',
+      $logger->actorLabel($admin instanceof User ? $admin : null) . ($reactivated
+        ? ' a réactivé l\'employé ' . $employer->getPseudo() . '.'
+        : ' a suspendu l\'employé ' . $employer->getPseudo() . '.')
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Statut mis à jour.',
@@ -85,7 +98,8 @@ class EmployerController extends AbstractController
     AccessoryRepository $accessoryRepo,
     CharacterRepository $characterRepo,
     CommentRepository $commentRepo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    ActivityLogger $logger
   ): JsonResponse {
     $employer = $userRepo->find($id);
 
@@ -128,8 +142,17 @@ class EmployerController extends AbstractController
       ['id' => $employer->getId()]
     );
 
+    $employerPseudo = $employer->getPseudo();
+
     $em->remove($employer);
     $em->flush();
+
+    $logger->log(
+      $admin instanceof User ? $admin : null,
+      'delete',
+      'Suppression d\'un employé',
+      $logger->actorLabel($admin instanceof User ? $admin : null) . ' a supprimé l\'employé ' . $employerPseudo . '.'
+    );
 
     return $this->json([
       'success' => true,

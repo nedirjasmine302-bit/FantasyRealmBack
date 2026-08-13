@@ -6,6 +6,7 @@ use App\Entity\Character;
 use App\Entity\User;
 use App\Repository\CharacterRepository;
 use App\Repository\CommentRepository;
+use App\Service\ActivityLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -41,7 +42,7 @@ class CharacterController extends AbstractController
 
   // Pour créer un personnage
   #[Route('/characters', name: 'characters_create', methods: ['POST'])]
-  public function create(Request $request, EntityManagerInterface $em): JsonResponse
+  public function create(Request $request, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $user = $this->getUser();
 
@@ -116,6 +117,13 @@ class CharacterController extends AbstractController
     $em->persist($character);
     $em->flush();
 
+    $logger->log(
+      $user,
+      'create',
+      'Création d\'un personnage',
+      $logger->actorLabel($user) . ' a créé le personnage "' . $character->getName() . '".'
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Votre personnage a été créé et est en attente de validation.',
@@ -164,7 +172,8 @@ class CharacterController extends AbstractController
     int $id,
     Request $request,
     CharacterRepository $repo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    ActivityLogger $logger
   ): JsonResponse {
     $user = $this->getUser();
     $character = $repo->find($id);
@@ -290,6 +299,13 @@ class CharacterController extends AbstractController
 
     $em->flush();
 
+    $logger->log(
+      $user,
+      'update',
+      'Modification d\'un personnage',
+      $logger->actorLabel($user) . ' a modifié le personnage "' . $character->getName() . '".'
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Personnage mis à jour.',
@@ -306,7 +322,8 @@ class CharacterController extends AbstractController
     Request $request,
     CharacterRepository $repo,
     EntityManagerInterface $em,
-    MailerInterface $mailer
+    MailerInterface $mailer,
+    ActivityLogger $logger
   ): JsonResponse {
     $character = $repo->find($id);
 
@@ -339,6 +356,16 @@ class CharacterController extends AbstractController
       $this->sendCharacterApprovalMail($mailer, $character);
     }
 
+    $moderator = $this->getUser();
+    $verb = ['valid' => 'a validé', 'refused' => 'a refusé', 'pending' => 'a remis en attente'][$status];
+    $labelStatus = ['valid' => 'Validation', 'refused' => 'Refus', 'pending' => 'Mise en attente'][$status];
+    $logger->log(
+      $moderator instanceof User ? $moderator : null,
+      'moderate',
+      $labelStatus . ' d\'un personnage',
+      $logger->actorLabel($moderator instanceof User ? $moderator : null) . ' ' . $verb . ' le personnage "' . $character->getName() . '".'
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Statut mis à jour.',
@@ -356,7 +383,8 @@ class CharacterController extends AbstractController
     CharacterRepository $repo,
     CommentRepository $commentRepo,
     EntityManagerInterface $em,
-    MailerInterface $mailer
+    MailerInterface $mailer,
+    ActivityLogger $logger
   ): JsonResponse {
     $character = $repo->find($id);
 
@@ -379,6 +407,8 @@ class CharacterController extends AbstractController
 
     $this->sendCharacterRejectionMail($mailer, $character, $reason);
 
+    $characterName = $character->getName();
+
     $this->purgeFavorites($em, $character->getId());
 
     foreach ($commentRepo->findBy(['character' => $character]) as $comment) {
@@ -387,6 +417,14 @@ class CharacterController extends AbstractController
 
     $em->remove($character);
     $em->flush();
+
+    $moderator = $this->getUser();
+    $logger->log(
+      $moderator instanceof User ? $moderator : null,
+      'moderate',
+      'Refus d\'un personnage',
+      $logger->actorLabel($moderator instanceof User ? $moderator : null) . ' a refusé et supprimé le personnage "' . $characterName . '".'
+    );
 
     return $this->json([
       'success' => true,
@@ -478,7 +516,7 @@ class CharacterController extends AbstractController
 
   // Pour partager ou arrêter le partage d'un personnage validé
   #[Route('/characters/{id}/share', name: 'characters_share', methods: ['PATCH'], requirements: ['id' => '\d+'])]
-  public function share(int $id, Request $request, CharacterRepository $repo, EntityManagerInterface $em): JsonResponse
+  public function share(int $id, Request $request, CharacterRepository $repo, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $user = $this->getUser();
     $character = $repo->find($id);
@@ -504,6 +542,15 @@ class CharacterController extends AbstractController
 
     $character->setShared($shared);
     $em->flush();
+
+    $logger->log(
+      $user,
+      $shared ? 'publish' : 'unpublish',
+      $shared ? 'Publication d\'un personnage' : 'Dépublication d\'un personnage',
+      $logger->actorLabel($user) . ($shared
+        ? ' a publié le personnage "' . $character->getName() . '".'
+        : ' a retiré de la publication le personnage "' . $character->getName() . '".')
+    );
 
     return $this->json([
       'success' => true,
@@ -556,7 +603,7 @@ class CharacterController extends AbstractController
 
   // Pour supprimer un personnage
   #[Route('/characters/{id}', name: 'characters_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
-  public function delete(int $id, CharacterRepository $repo, CommentRepository $commentRepo, EntityManagerInterface $em): JsonResponse
+  public function delete(int $id, CharacterRepository $repo, CommentRepository $commentRepo, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $user = $this->getUser();
     $character = $repo->find($id);
@@ -573,6 +620,8 @@ class CharacterController extends AbstractController
       return $this->json(['success' => false, 'message' => 'Ce personnage ne vous appartient pas.'], 403);
     }
 
+    $characterName = $character->getName();
+
     $this->purgeFavorites($em, $character->getId());
 
     foreach ($commentRepo->findBy(['character' => $character]) as $comment) {
@@ -581,6 +630,13 @@ class CharacterController extends AbstractController
 
     $em->remove($character);
     $em->flush();
+
+    $logger->log(
+      $user,
+      'delete',
+      'Suppression d\'un personnage',
+      $logger->actorLabel($user) . ' a supprimé le personnage "' . $characterName . '".'
+    );
 
     return $this->json([
       'success' => true,

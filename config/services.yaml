@@ -19,5 +19,12 @@ services:
     App\:
         resource: '../src/'
 
+    # Journal d'activité stocké dans MongoDB (voir MONGODB_URL / MONGODB_DB dans .env)
+    App\Service\ActivityLogger:
+        arguments:
+            $mongoUrl: '%env(MONGODB_URL)%'
+            $databaseName: '%env(MONGODB_DB)%'
+            $collectionName: 'activity_logs'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

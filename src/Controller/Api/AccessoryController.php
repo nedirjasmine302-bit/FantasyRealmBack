@@ -5,6 +5,7 @@ namespace App\Controller\Api;
 use App\Entity\Accessory;
 use App\Entity\User;
 use App\Repository\AccessoryRepository;
+use App\Service\ActivityLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -81,7 +82,7 @@ class AccessoryController extends AbstractController
   // Pour créer un accessoire
   #[Route('/accessories', name: 'accessories_create', methods: ['POST'])]
   #[IsGranted('ROLE_EMPLOYER')]
-  public function create(Request $request, EntityManagerInterface $em): JsonResponse
+  public function create(Request $request, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $user = $this->getUser();
 
@@ -146,6 +147,13 @@ class AccessoryController extends AbstractController
     $em->persist($accessory);
     $em->flush();
 
+    $logger->log(
+      $user,
+      'create',
+      'Création d\'un accessoire',
+      $logger->actorLabel($user) . ' a créé l\'accessoire "' . $accessory->getName() . '".'
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Votre accessoire a été créé avec succès !',
@@ -157,7 +165,7 @@ class AccessoryController extends AbstractController
   // Pour activer ou désactiver un accessoire
   #[Route('/accessories/{id}/active', name: 'accessories_toggle_active', methods: ['PATCH'], requirements: ['id' => '\d+'])]
   #[IsGranted('ROLE_EMPLOYER')]
-  public function toggleActive(int $id, AccessoryRepository $repo, EntityManagerInterface $em): JsonResponse
+  public function toggleActive(int $id, AccessoryRepository $repo, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $accessory = $repo->find($id);
 
@@ -171,6 +179,17 @@ class AccessoryController extends AbstractController
     $accessory->setActive(!$accessory->isActive());
     $em->flush();
 
+    $active = $accessory->isActive();
+    $user = $this->getUser();
+    $logger->log(
+      $user instanceof User ? $user : null,
+      $active ? 'publish' : 'unpublish',
+      $active ? 'Activation d\'un accessoire' : 'Désactivation d\'un accessoire',
+      $logger->actorLabel($user instanceof User ? $user : null) . ($active
+        ? ' a activé l\'accessoire "' . $accessory->getName() . '".'
+        : ' a désactivé l\'accessoire "' . $accessory->getName() . '".')
+    );
+
     return $this->json([
       'success' => true,
       'message' => $accessory->isActive() ? 'Accessoire activé.' : 'Accessoire désactivé.',
@@ -183,7 +202,7 @@ class AccessoryController extends AbstractController
   // Pour supprimer définitivement un accessoire
   #[Route('/accessories/{id}', name: 'accessories_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
   #[IsGranted('ROLE_EMPLOYER')]
-  public function delete(int $id, AccessoryRepository $repo, EntityManagerInterface $em): JsonResponse
+  public function delete(int $id, AccessoryRepository $repo, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $accessory = $repo->find($id);
 
@@ -194,8 +213,18 @@ class AccessoryController extends AbstractController
       ], 404);
     }
 
+    $accessoryName = $accessory->getName();
+
     $em->remove($accessory);
     $em->flush();
+
+    $user = $this->getUser();
+    $logger->log(
+      $user instanceof User ? $user : null,
+      'delete',
+      'Suppression d\'un accessoire',
+      $logger->actorLabel($user instanceof User ? $user : null) . ' a supprimé l\'accessoire "' . $accessoryName . '".'
+    );
 
     return $this->json([
       'success' => true,

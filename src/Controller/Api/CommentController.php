@@ -6,6 +6,7 @@ use App\Entity\Comment;
 use App\Entity\User;
 use App\Repository\CharacterRepository;
 use App\Repository\CommentRepository;
+use App\Service\ActivityLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -48,7 +49,8 @@ class CommentController extends AbstractController
     int $id,
     Request $request,
     CharacterRepository $characterRepo,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    ActivityLogger $logger
   ): JsonResponse {
     $user = $this->getUser();
 
@@ -95,6 +97,13 @@ class CommentController extends AbstractController
 
     $em->persist($comment);
     $em->flush();
+
+    $logger->log(
+      $user,
+      'create',
+      'Publication d\'un commentaire',
+      $logger->actorLabel($user) . ' a laissé un commentaire sur le personnage "' . $character->getName() . '".'
+    );
 
     return $this->json([
       'success' => true,
@@ -146,7 +155,8 @@ class CommentController extends AbstractController
     Request $request,
     CommentRepository $commentRepo,
     EntityManagerInterface $em,
-    MailerInterface $mailer
+    MailerInterface $mailer,
+    ActivityLogger $logger
   ): JsonResponse {
     $comment = $commentRepo->find($id);
 
@@ -174,6 +184,16 @@ class CommentController extends AbstractController
       $this->sendCommentApprovalMail($mailer, $comment);
     }
 
+    $moderator = $this->getUser();
+    $verb = ['valid' => 'a validé', 'refused' => 'a refusé', 'pending' => 'a remis en attente'][$status];
+    $labelStatus = ['valid' => 'Validation', 'refused' => 'Refus', 'pending' => 'Mise en attente'][$status];
+    $logger->log(
+      $moderator instanceof User ? $moderator : null,
+      'moderate',
+      $labelStatus . ' d\'un commentaire',
+      $logger->actorLabel($moderator instanceof User ? $moderator : null) . ' ' . $verb . ' le commentaire du joueur ' . ($comment->getAuthor()?->getPseudo() ?? 'Inconnu') . ' sur le personnage "' . ($comment->getCharacter()?->getName() ?? '') . '".'
+    );
+
     return $this->json([
       'success' => true,
       'message' => 'Statut mis à jour.',
@@ -190,7 +210,8 @@ class CommentController extends AbstractController
     Request $request,
     CommentRepository $commentRepo,
     EntityManagerInterface $em,
-    MailerInterface $mailer
+    MailerInterface $mailer,
+    ActivityLogger $logger
   ): JsonResponse {
     $comment = $commentRepo->find($id);
 
@@ -211,11 +232,21 @@ class CommentController extends AbstractController
       ], 400);
     }
 
-    // On prévient l'auteur avant la suppression définitive
     $this->sendCommentRejectionMail($mailer, $comment, $reason);
+
+    $authorPseudo = $comment->getAuthor()?->getPseudo() ?? 'Inconnu';
+    $characterName = $comment->getCharacter()?->getName() ?? '';
 
     $em->remove($comment);
     $em->flush();
+
+    $moderator = $this->getUser();
+    $logger->log(
+      $moderator instanceof User ? $moderator : null,
+      'moderate',
+      'Refus d\'un commentaire',
+      $logger->actorLabel($moderator instanceof User ? $moderator : null) . ' a refusé et supprimé le commentaire du joueur ' . $authorPseudo . ' sur le personnage "' . $characterName . '".'
+    );
 
     return $this->json([
       'success' => true,
@@ -227,7 +258,7 @@ class CommentController extends AbstractController
   // Pour supprimer définitivement un commentaire
   #[Route('/comments/{id}', name: 'comments_delete', methods: ['DELETE'], requirements: ['id' => '\d+'])]
   #[IsGranted('ROLE_EMPLOYER')]
-  public function delete(int $id, CommentRepository $commentRepo, EntityManagerInterface $em): JsonResponse
+  public function delete(int $id, CommentRepository $commentRepo, EntityManagerInterface $em, ActivityLogger $logger): JsonResponse
   {
     $comment = $commentRepo->find($id);
 
@@ -238,8 +269,19 @@ class CommentController extends AbstractController
       ], 404);
     }
 
+    $authorPseudo = $comment->getAuthor()?->getPseudo() ?? 'Inconnu';
+    $characterName = $comment->getCharacter()?->getName() ?? '';
+
     $em->remove($comment);
     $em->flush();
+
+    $user = $this->getUser();
+    $logger->log(
+      $user instanceof User ? $user : null,
+      'delete',
+      'Suppression d\'un commentaire',
+      $logger->actorLabel($user instanceof User ? $user : null) . ' a supprimé le commentaire du joueur ' . $authorPseudo . ' sur le personnage "' . $characterName . '".'
+    );
 
     return $this->json([
       'success' => true,

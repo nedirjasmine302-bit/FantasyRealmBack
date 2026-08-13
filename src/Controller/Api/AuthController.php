@@ -4,6 +4,7 @@ namespace App\Controller\Api;
 
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Service\ActivityLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -46,7 +47,8 @@ class AuthController extends AbstractController
     Request $request,
     EntityManagerInterface $em,
     UserRepository $userRepository,
-    UserPasswordHasherInterface $passwordHasher
+    UserPasswordHasherInterface $passwordHasher,
+    ActivityLogger $logger
   ): JsonResponse {
     $data = json_decode($request->getContent(), true);
 
@@ -91,6 +93,13 @@ class AuthController extends AbstractController
 
       $em->persist($user);
       $em->flush();
+
+      $logger->log(
+        $user,
+        'create',
+        'Création d\'un compte',
+        $logger->actorLabel($user) . ' a créé son compte.'
+      );
 
       $response = [
         'success' => true,
@@ -432,7 +441,7 @@ class AuthController extends AbstractController
     $password = '';
 
     for ($i = 0; $i < $length; $i++) {
-      $password .= $chars[random_int(0, strlen($chars) - 1)];
+      $password .= $chars[\random_int(0, \strlen($chars) - 1)];
     }
 
     return $password;
