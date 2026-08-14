@@ -407,6 +407,14 @@ class AuthController extends AbstractController
       ], 404);
     }
 
+    $roles = $user->getRoles();
+    if (\in_array('ROLE_EMPLOYER', $roles, true) || \in_array('ROLE_ADMIN', $roles, true)) {
+      return $this->json([
+        'success' => false,
+        'message' => "Un compte employé ne peut pas réinitialiser son mot de passe ici."
+      ], 403);
+    }
+
     $temporaryPasswordPlain = $this->generateTemporaryPassword(10);
     $temporaryPasswordHashed = $passwordHasher->hashPassword($user, $temporaryPasswordPlain);
     $expiresAt = (new \DateTimeImmutable())->modify('+15 minutes');

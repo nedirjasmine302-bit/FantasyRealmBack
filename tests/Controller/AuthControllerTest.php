@@ -494,6 +494,26 @@ class AuthControllerTest extends WebTestCase
     $this->assertEquals('Email et pseudo sont obligatoires.', $data['message']);
   }
 
+  public function testForgotPasswordEmployerBlocked(): void
+  {
+    $email = 'boss@mail.fr';
+    $this->createEmployer($email, true);
+
+    $response = $this->post('/api/auth/forgot-password', [
+      'email' => $email,
+      'pseudo' => 'Boss' . substr(md5($email), 0, 4)
+    ]);
+
+    $data = json_decode($response->getContent(), true);
+
+    $this->assertEquals(403, $response->getStatusCode());
+    $this->assertFalse($data['success']);
+    $this->assertEquals(
+      "Un compte employé ne peut pas réinitialiser son mot de passe ici.",
+      $data['message']
+    );
+  }
+
 
   // Pour tester le changement du mot de passe via le mot de passe temporaire
   public function testVerifyTempPasswordMissingFields(): void
