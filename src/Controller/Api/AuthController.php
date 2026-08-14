@@ -48,8 +48,17 @@ class AuthController extends AbstractController
     EntityManagerInterface $em,
     UserRepository $userRepository,
     UserPasswordHasherInterface $passwordHasher,
-    ActivityLogger $logger
+    ActivityLogger $logger,
+    RateLimiterFactory $sensitiveLimiter
   ): JsonResponse {
+    $limiter = $sensitiveLimiter->create($request->getClientIp());
+    if (!$limiter->consume(1)->isAccepted()) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Trop de tentatives. Réessayez dans quelques instants.'
+      ], 429);
+    }
+
     $data = json_decode($request->getContent(), true);
 
     $email = $data['email'] ?? null;
@@ -123,8 +132,17 @@ class AuthController extends AbstractController
     Request $request,
     EntityManagerInterface $em,
     UserRepository $userRepository,
-    UserPasswordHasherInterface $passwordHasher
+    UserPasswordHasherInterface $passwordHasher,
+    RateLimiterFactory $sensitiveLimiter
   ): JsonResponse {
+    $limiter = $sensitiveLimiter->create($request->getClientIp());
+    if (!$limiter->consume(1)->isAccepted()) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Trop de tentatives. Réessayez dans quelques instants.'
+      ], 429);
+    }
+
     $data = json_decode($request->getContent(), true);
 
     $email = $data['email'] ?? null;
@@ -460,8 +478,17 @@ class AuthController extends AbstractController
     public function verifyTemporaryPassword(
       Request $request,
       UserRepository $userRepository,
-      PasswordHasherFactoryInterface $passwordHasherFactory
+      PasswordHasherFactoryInterface $passwordHasherFactory,
+      RateLimiterFactory $sensitiveLimiter
       ): JsonResponse {
+      $limiter = $sensitiveLimiter->create($request->getClientIp());
+      if (!$limiter->consume(1)->isAccepted()) {
+          return $this->json([
+              'valid' => false,
+              'message' => 'Trop de tentatives. Réessayez dans quelques instants.'
+          ], 429);
+      }
+
       $data = json_decode($request->getContent(), true);
   
       $email = $data['email'] ?? null;
@@ -546,11 +573,20 @@ class AuthController extends AbstractController
       Request $request,
       UserRepository $userRepository,
       UserPasswordHasherInterface $passwordHasher,
-      EntityManagerInterface $em
+      EntityManagerInterface $em,
+      RateLimiterFactory $sensitiveLimiter
   ): JsonResponse
   {
+      $limiter = $sensitiveLimiter->create($request->getClientIp());
+      if (!$limiter->consume(1)->isAccepted()) {
+          return $this->json([
+              'success' => false,
+              'message' => 'Trop de tentatives. Réessayez dans quelques instants.'
+          ], 429);
+      }
+
       $data = json_decode($request->getContent(), true);
-  
+
       $email = $data['email'] ?? null;
       $temporaryPassword = $data['temporaryPassword'] ?? null;
       $newPassword = $data['newPassword'] ?? null;
@@ -620,8 +656,17 @@ class AuthController extends AbstractController
     Request $request,
     UserRepository $userRepository,
     UserPasswordHasherInterface $passwordHasher,
-    EntityManagerInterface $em
+    EntityManagerInterface $em,
+    RateLimiterFactory $sensitiveLimiter
   ): JsonResponse {
+    $limiter = $sensitiveLimiter->create($request->getClientIp());
+    if (!$limiter->consume(1)->isAccepted()) {
+      return $this->json([
+        'success' => false,
+        'message' => 'Trop de tentatives. Réessayez dans quelques instants.'
+      ], 429);
+    }
+
     $data = json_decode($request->getContent(), true);
 
     $email = $data['email'] ?? null;
