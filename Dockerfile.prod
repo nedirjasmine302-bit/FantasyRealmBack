@@ -19,6 +19,11 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --no-script
 
 COPY . .
 
+# Regenere l'autoload avec le code complet ET les scripts actives :
+# genere vendor/autoload_runtime.php (indispensable a bin/console et public/index.php,
+# saute par --no-scripts lors du composer install ci-dessus).
+RUN composer dump-autoload --optimize --no-dev
+
 RUN mkdir -p var/cache var/log var/share config/jwt \
     && chown -R www-data:www-data var config/jwt
 
