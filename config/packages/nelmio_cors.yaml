@@ -1,6 +1,6 @@
 nelmio_cors:
   defaults:
-    allow_origin: ['http://localhost:3000']
+    allow_origin: ['http://localhost:3000', 'https://fantasyrealm-online.netlify.app']
     allow_credentials: true
     allow_headers: ['Content-Type', 'Authorization']
     allow_methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
@@ -8,7 +8,7 @@ nelmio_cors:
 
   paths:
     '^/api/':
-      allow_origin: ['http://localhost:3000']
+      allow_origin: ['http://localhost:3000', 'https://fantasyrealm-online.netlify.app']
       allow_headers: ['Content-Type', 'Authorization']
       allow_methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
       max_age: 3600
