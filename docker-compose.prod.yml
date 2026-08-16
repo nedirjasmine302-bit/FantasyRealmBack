@@ -1,0 +1,51 @@
+# Configuration Docker de PRODUCTION.
+# Différences avec docker-compose.yml (dev) :
+#   - PAS de phpmyadmin (outil de dev, ne doit jamais être exposé en prod)
+#   - PAS de mailer/mailpit (Mailpit = capture de mails en dev uniquement)
+#   - PAS de ports: exposés sur mysql/mongo (les bases ne sont PAS joignables depuis Internet)
+#   - Mots de passe DB via variables d'environnement (jamais en dur)
+#
+# NB : sur Railway, MySQL et MongoDB sont fournis comme services managés séparés
+# (avec DATABASE_URL / MONGODB_URL générés automatiquement). Ce fichier sert de
+# référence "prod" et reste utilisable pour un déploiement auto-hébergé (VPS).
+
+services:
+  php:
+    build: .
+    depends_on:
+      - mysql
+      - mongo
+    environment:
+      APP_ENV: prod
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./:/var/www/html
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: FantasyRealmBDD
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Pas de ports exposés : accessible seulement depuis le réseau interne Docker
+
+  mongo:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    # Pas de ports exposés
+
+volumes:
+  mysql_data:
+  mongo_data:
