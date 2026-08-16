@@ -1,0 +1,6 @@
+# Force les fins de ligne LF pour les fichiers qui tournent sous Linux (Docker/Railway).
+# Évite qu'un CRLF (Windows) casse le shebang du script de démarrage.
+*.sh          text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile*   text eol=lf
+*.conf        text eol=lf

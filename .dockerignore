@@ -1,0 +1,20 @@
+# Fichiers à NE PAS copier dans l'image de production.
+.git
+.github
+vendor/
+var/
+node_modules/
+
+# Secrets et clés de DEV (ne doivent jamais entrer dans l'image de prod)
+.env.local
+.env.*.local
+config/jwt/*.pem
+
+# Outils de dev
+docker-compose.yml
+docker-compose.prod.yml
+Dockerfile
+tests/
+.phpunit.cache/
+.vscode/
+.idea/
