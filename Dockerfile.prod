@@ -1,8 +1,5 @@
-# ---- Dockerfile de PRODUCTION (Railway) ----
-# Un seul conteneur qui fait tourner nginx + php-fpm ensemble.
 FROM php:8.3-fpm
 
-# Dépendances système + nginx + supervisor + gettext (pour envsubst) + extensions PHP
 RUN apt-get update && apt-get install -y \
     git unzip nginx supervisor gettext-base \
     libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev \
@@ -12,24 +9,19 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/nginx/sites-enabled/default
 
-# Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# On installe d'abord les dépendances (meilleur cache de build)
 COPY composer.json composer.lock symfony.lock ./
 ENV APP_ENV=prod
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts --no-progress
 
-# Puis le reste du code
 COPY . .
 
-# Prépare les dossiers inscriptibles + droits pour php-fpm (www-data)
 RUN mkdir -p var/cache var/log var/share config/jwt \
     && chown -R www-data:www-data var config/jwt
 
-# Config nginx (template avec ${PORT}), supervisor, et script de démarrage
 COPY docker/nginx.conf /etc/nginx/templates/default.conf.template
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
