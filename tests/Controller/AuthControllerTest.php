@@ -20,6 +20,9 @@ class AuthControllerTest extends WebTestCase
 
     $loginLimiter = static::getContainer()->get('limiter.login');
     $loginLimiter->create('127.0.0.1')->reset();
+
+    $sensitiveLimiter = static::getContainer()->get('limiter.sensitive');
+    $sensitiveLimiter->create('127.0.0.1')->reset();
   }
 
   private function post(string $url, array $payload)
