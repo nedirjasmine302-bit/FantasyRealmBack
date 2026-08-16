@@ -1,3 +1,4 @@
+#!/bin/sh
 set -e
 
 export PORT="${PORT:-8080}"
