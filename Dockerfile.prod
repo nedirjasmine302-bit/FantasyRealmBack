@@ -13,16 +13,16 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-COPY composer.json composer.lock symfony.lock ./
-ENV APP_ENV=prod
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts --no-progress
-
+# Copie tout le code d'abord (vendor/ exclu par .dockerignore)
 COPY . .
+ENV APP_ENV=prod
 
-# Regenere l'autoload avec le code complet ET les scripts actives :
-# genere vendor/autoload_runtime.php (indispensable a bin/console et public/index.php,
-# saute par --no-scripts lors du composer install ci-dessus).
-RUN composer dump-autoload --optimize --no-dev
+# Installe les dependances de prod PUIS regenere l'autoload.
+# Le dump-autoload (scripts actives) declenche symfony/runtime qui genere
+# vendor/autoload_runtime.php, indispensable a bin/console et public/index.php.
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress --no-scripts \
+    && composer dump-autoload --optimize --no-dev \
+    && test -f vendor/autoload_runtime.php || (echo "ERREUR: autoload_runtime.php manquant" && exit 1)
 
 RUN mkdir -p var/cache var/log var/share config/jwt \
     && chown -R www-data:www-data var config/jwt
