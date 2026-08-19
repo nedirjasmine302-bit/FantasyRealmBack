@@ -13,16 +13,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# Copie tout le code d'abord (vendor/ exclu par .dockerignore)
 COPY . .
 ENV APP_ENV=prod
-# Autorise les plugins Composer a tourner en root (build Railway = root),
-# sinon symfony/runtime (un plugin) ne se charge pas et autoload_runtime.php manque.
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Installe les dependances de prod PUIS regenere l'autoload.
-# Le dump-autoload (scripts actives) declenche symfony/runtime qui genere
-# vendor/autoload_runtime.php, indispensable a bin/console et public/index.php.
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress --no-scripts \
     && composer dump-autoload --optimize --no-dev \
     && test -f vendor/autoload_runtime.php || (echo "ERREUR: autoload_runtime.php manquant" && exit 1)
