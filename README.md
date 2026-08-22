@@ -37,7 +37,7 @@ Toutes les commandes se lancent depuis la racine du projet.
 docker compose up -d --build
 ```
 
-Cela lance : `php`, `nginx`, `mysql`, `phpmyadmin`, `mongo` et `mailer` (Mailpit).
+Cela lance : `php`, `nginx`, `mysql`, `phpmyadmin`, `mongo`, `mongo-express` et `mailer` (Mailpit).
 
 ### 2. Installer les dépendances PHP
 
@@ -64,17 +64,36 @@ Crée toutes les tables dans la base `FantasyRealmBDD` :
 docker compose exec php php bin/console doctrine:migrations:migrate --no-interaction
 ```
 
+### 5. Importer les données
+
+Après les migrations, les bases sont **vides**. Deux jeux de données réels sont fournis à la
+racine du projet : `dump.sql` (MySQL, données métier) et `mongo-dump.archive` (MongoDB, journal
+d'activité).
+
+**MySQL** — charge les personnages, accessoires, comptes, etc. :
+
+```bash
+docker compose exec -T mysql mysql -u root -proot FantasyRealmBDD < dump.sql
+```
+
+**MongoDB** — charge le journal d'activité (logs) :
+
+```bash
+docker compose exec -T mongo mongorestore --uri="mongodb://mongo:27017" --drop --archive < mongo-dump.archive
+```
+
 L'API est prête sur **http://localhost:8080**. 🎉
 
 ## Services accessibles en local
 
-| Service              | URL / Port                | Rôle                                      |
-| -------------------- | ------------------------- | ----------------------------------------- |
-| API (nginx)          | http://localhost:8080     | Point d'entrée de l'API                   |
-| phpMyAdmin           | http://localhost:8081     | Interface pour la base MySQL              |
-| Mailpit              | http://localhost:8025     | Boîte mail de test (mails sortants)       |
-| MySQL                | localhost:3307            | Base de données métier                    |
-| MongoDB              | localhost:27017           | Journal d'activité (logs)                 |
+| Service              | URL / Port                | Rôle                                              |
+| -------------------- | ------------------------- | ------------------------------------------------- |
+| API (nginx)          | http://localhost:8080     | Point d'entrée de l'API                           |
+| phpMyAdmin           | http://localhost:8081     | Interface web pour **consulter** MySQL            |
+| mongo-express        | http://localhost:8082     | Interface web pour **consulter** MongoDB          |
+| Mailpit              | http://localhost:8025     | Boîte mail de test (mails sortants)               |
+| MySQL                | localhost:3307            | La base de données métier (connexion directe)     |
+| MongoDB              | localhost:27017           | La base du journal d'activité (connexion directe) |
 
 > Identifiants MySQL en local : utilisateur `root`, mot de passe `root`, base `FantasyRealmBDD`
 > (voir `docker-compose.yml`).
@@ -108,18 +127,23 @@ docker compose exec php vendor/bin/phpunit
 ```
 FantasyRealmBack/
 ├── src/
-│   ├── Controller/Api/   # Contrôleurs de l'API (Auth, Character, Accessory, Favorite…)
-│   ├── Entity/           # Entités Doctrine (User, Character, Accessory, Comment)
-│   ├── Repository/       # Repositories Doctrine
-│   └── Service/          # Services métier (ActivityLogger → logs MongoDB)
-├── config/               # Configuration Symfony (packages, routes, jwt…)
-├── migrations/           # Migrations Doctrine (schéma MySQL)
-├── docker/               # entrypoint, nginx et supervisord pour l'image de prod
-├── nginx/                # Config nginx pour le dev
-├── tests/                # Tests PHPUnit
-├── docker-compose.yml    # Environnement de dev
-├── Dockerfile            # Image PHP de dev
-├── Dockerfile.prod       # Image de prod (Railway)
+│   ├── Controller/Api/       # Contrôleurs de l'API (Auth, Character, Accessory,
+│   │                         #   Comment, Employer, Favorite, Log, Player, Contact)
+│   ├── Entity/               # Entités Doctrine (User, Character, Accessory, Comment)
+│   ├── Repository/           # Repositories Doctrine
+│   └── Service/              # Services métier (ActivityLogger → logs MongoDB)
+├── config/                   # Configuration Symfony (packages, routes, security, jwt…)
+├── migrations/               # Migrations Doctrine (schéma MySQL)
+├── tests/                    # Tests PHPUnit (un par contrôleur)
+├── docker/                   # entrypoint, nginx et supervisord pour l'image de prod
+├── nginx/                    # Config nginx pour le dev
+├── .github/workflows/        # Intégration continue (CI)
+├── docker-compose.yml        # Environnement de dev (php, nginx, mysql, phpmyadmin,
+│                             #   mongo, mongo-express, mailer)
+├── Dockerfile / Dockerfile.prod  # Images PHP (dev / prod Railway)
+├── railway.json              # Config de déploiement Railway
+├── dump.sql                  # Données MySQL à importer (voir étape 5)
+├── mongo-dump.archive        # Données MongoDB à importer (voir étape 5)
 └── README.md
 ```
 
