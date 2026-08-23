@@ -82,6 +82,15 @@ docker compose exec -T mysql mysql -u root -proot FantasyRealmBDD < dump.sql
 docker compose exec -T mongo mongorestore --uri="mongodb://mongo:27017" --drop --archive < mongo-dump.archive
 ```
 
+> ℹ️ **Sous Windows PowerShell**, l'opérateur `<` n'existe pas (erreur *« The '<' operator is
+> reserved for future use »*). Lance plutôt ces commandes depuis **Git Bash** ou **cmd**, ou
+> utilise la variante PowerShell avec un pipe :
+>
+> ```powershell
+> Get-Content dump.sql | docker compose exec -T mysql mysql -u root -proot FantasyRealmBDD
+> Get-Content mongo-dump.archive -AsByteStream | docker compose exec -T mongo mongorestore --uri="mongodb://mongo:27017" --drop --archive
+> ```
+
 L'API est prête sur **http://localhost:8080**. 🎉
 
 ## Services accessibles en local
