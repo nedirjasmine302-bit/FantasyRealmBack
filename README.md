@@ -91,7 +91,7 @@ docker compose exec -T mongo mongorestore --uri="mongodb://mongo:27017" --drop -
 > Get-Content mongo-dump.archive -AsByteStream | docker compose exec -T mongo mongorestore --uri="mongodb://mongo:27017" --drop --archive
 > ```
 
-L'API est prête sur **http://localhost:8080**. 🎉
+L'API est prête sur **http://localhost:8080**.
 
 ## Services accessibles en local
 
