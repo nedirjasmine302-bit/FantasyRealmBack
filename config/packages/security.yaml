@@ -87,14 +87,14 @@ security:
     # Consultation des accessoires en lecture seule : accessible aux visiteurs
     - { path: ^/api/accessories, methods: [GET], roles: PUBLIC_ACCESS }
 
-    # Consultation des commentaires en lecture seule : accessible aux visiteurs
-    - { path: ^/api/comments, methods: [GET], roles: PUBLIC_ACCESS }
+    # Liste des commentaires pour la modération : réservée au staff
+    - { path: ^/api/comments, methods: [GET], roles: ROLE_EMPLOYER }
 
-    # Liste des joueurs pour le management
-    - { path: ^/api/players, methods: [GET], roles: PUBLIC_ACCESS }
+    # Liste des joueurs pour le management : réservée au staff
+    - { path: ^/api/players, methods: [GET], roles: ROLE_EMPLOYER }
 
-    # Liste des employés pour le management
-    - { path: ^/api/employers, methods: [GET], roles: PUBLIC_ACCESS }
+    # Liste des employés pour le management : réservée aux administrateurs
+    - { path: ^/api/employers, methods: [GET], roles: ROLE_ADMIN }
 
     # Le reste des /api nécessite un JWT valide
     - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
